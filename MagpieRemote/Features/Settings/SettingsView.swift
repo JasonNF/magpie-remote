@@ -440,6 +440,144 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - 可观测性（OTLP）
+    private var observabilitySection: some View {
+        let otel = settings?.otel ?? OtelSettingsDTO()
+        let contentMode = !(otel.bodies ?? false)
+            ? "metadata"
+            : ((otel.bodiesWhole ?? false) ? "full" : "limited")
+        return settingsSection(String(localized: "可观测性"), icon: "waveform.path.ecg", tint: MagpieTheme.cyan) {
+            toggleRow(
+                String(localized: "OTLP 导出"),
+                subtitle: String(localized: "把网关请求元数据发送到你的采集器；账号凭证始终留在本机"),
+                icon: "paperplane.fill",
+                tint: MagpieTheme.cyan,
+                isOn: Binding(
+                    get: { otel.enabled ?? false },
+                    set: { setOtel(enabled: $0) }
+                )
+            )
+            rowDivider
+            otelFieldRow(
+                String(localized: "OTLP 端点"),
+                subtitle: String(localized: "采集器的基础地址，或 Langfuse 的 /api/public/otel 端点"),
+                icon: "link",
+                tint: MagpieTheme.cyan,
+                placeholder: "http://localhost:4318",
+                text: $otelEndpointDraft,
+                isSecret: false
+            ) {
+                setOtel(endpoint: otelEndpointDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            rowDivider
+            otelFieldRow(
+                String(localized: "OTLP 请求头"),
+                subtitle: String(localized: "逗号分隔的 name=value；值里的空格与逗号用百分号编码"),
+                icon: "list.bullet.rectangle",
+                tint: MagpieTheme.amber,
+                placeholder: "Authorization=Bearer%20token",
+                text: $otelHeadersDraft,
+                isSecret: true
+            ) {
+                commitOtelHeaders()
+            }
+            rowDivider
+            toggleRow(
+                String(localized: "导出指标"),
+                subtitle: String(localized: "同时发送时长与 Token 直方图；Langfuse 等仅接受 Trace 的服务请关闭"),
+                icon: "chart.bar.xaxis",
+                tint: MagpieTheme.green,
+                isOn: Binding(
+                    get: { otel.metrics ?? false },
+                    set: { setOtel(metrics: $0) }
+                )
+            )
+            rowDivider
+            toggleRow(
+                String(localized: "追踪 Agent 会话"),
+                subtitle: String(localized: "读取本机各 Agent 的会话事件，包括未经 magpie 的调用"),
+                icon: "point.3.connected.trianglepath.dotted",
+                tint: MagpieTheme.purple,
+                isOn: Binding(
+                    get: { otel.sessions ?? false },
+                    set: { setOtel(sessions: $0) }
+                )
+            )
+            rowDivider
+            pickerRow(
+                String(localized: "Trace 内容"),
+                subtitle: String(localized: "是否随 Trace 导出请求与回复正文"),
+                icon: "text.alignleft",
+                tint: MagpieTheme.cyan,
+                selection: Binding(
+                    get: { contentMode },
+                    set: { mode in
+                        switch mode {
+                        case "full": setOtel(bodies: true, bodiesWhole: true)
+                        case "limited": setOtel(bodies: true, bodiesWhole: false)
+                        default: setOtel(bodies: false, bodiesWhole: false)
+                        }
+                    }
+                ),
+                options: [
+                    ("metadata", String(localized: "仅元数据")),
+                    ("limited", String(localized: "最多 256 KB")),
+                    ("full", String(localized: "完整内容"))
+                ]
+            )
+        }
+        .onAppear {
+            guard !otelPrimed else { return }
+            otelPrimed = true
+            otelEndpointDraft = otel.endpoint ?? ""
+            otelHeadersDraft = (otel.headers ?? [:])
+                .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0.value)" }
+                .sorted()
+                .joined(separator: ",")
+        }
+    }
+
+    /// 保存 OTel 配置：只覆盖传入的字段，其余保持服务端原值。
+    private func setOtel(
+        enabled: Bool? = nil,
+        endpoint: String? = nil,
+        headers: [String: String]? = nil,
+        metrics: Bool? = nil,
+        sessions: Bool? = nil,
+        bodies: Bool? = nil,
+        bodiesWhole: Bool? = nil
+    ) {
+        guard let client = app.client else { return }
+        var next = settings?.otel ?? OtelSettingsDTO()
+        if let enabled { next.enabled = enabled }
+        if let endpoint { next.endpoint = endpoint }
+        if let headers { next.headers = headers }
+        if let metrics { next.metrics = metrics }
+        if let sessions { next.sessions = sessions }
+        if let bodies { next.bodies = bodies }
+        if let bodiesWhole { next.bodiesWhole = bodiesWhole }
+        Task { await viewModel.update(client: client, key: "otel", value: next) }
+    }
+
+    /// 解析 `name=value,name2=value2` 形式的请求头并保存。
+    private func commitOtelHeaders() {
+        let raw = otelHeadersDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else {
+            setOtel(headers: [:])
+            return
+        }
+        var values: [String: String] = [:]
+        for part in raw.split(separator: ",") where !part.trimmingCharacters(in: .whitespaces).isEmpty {
+            guard let index = part.firstIndex(of: "="), index != part.startIndex else {
+                return
+            }
+            let name = part[..<index].trimmingCharacters(in: .whitespaces)
+            let value = part[part.index(after: index)...].trimmingCharacters(in: .whitespaces)
+            values[name] = value.removingPercentEncoding ?? value
+        }
+        setOtel(headers: values)
+    }
+
     // MARK: - 备份
     private var backupSection: some View {
         settingsSection(String(localized: "备份与恢复"), icon: "externaldrive.fill", tint: MagpieTheme.cyan) {
@@ -645,6 +783,54 @@ struct SettingsView: View {
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(MagpieTheme.green)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    /// 可观测性页的文本输入行：标题 + 说明 + 独立一行的输入框。
+    private func otelFieldRow(
+        _ title: String,
+        subtitle: String,
+        icon: String,
+        tint: Color,
+        placeholder: String,
+        text: Binding<String>,
+        isSecret: Bool,
+        onCommit: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                settingsGlyph(icon, tint: tint)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(MagpieTheme.textPrimary)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(MagpieTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+            }
+
+            Group {
+                if isSecret {
+                    SecureField(placeholder, text: text)
+                } else {
+                    TextField(placeholder, text: text)
+                }
+            }
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(.system(size: 12, design: .monospaced))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(MagpieTheme.pill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .submitLabel(.done)
+            .onSubmit(onCommit)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
