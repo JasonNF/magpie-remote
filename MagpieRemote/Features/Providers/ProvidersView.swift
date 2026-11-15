@@ -1,0 +1,506 @@
+import SwiftUI
+import UIKit
+
+/// Providers 视图：1:1 对齐官方 Web / 客户端设计。
+/// 支持官方彩色品牌 Logo、已启用/已停用分组、连通性状态与预设添加。
+struct ProvidersView: View {
+    @Environment(AppModel.self) private var app
+    @State private var viewModel = ProvidersViewModel()
+    @State private var searchText = ""
+    @State private var showingAddSheet = false
+    @State private var isOffExpanded = true
+    @State private var showingOrderSheet = false
+    @State private var testMessage: String?
+    @Namespace private var zoomNamespace
+
+    private var activeProviders: [ProviderDTO] {
+        filtered(viewModel.providers.filter { !$0.isOff })
+    }
+
+    private var offProviders: [ProviderDTO] {
+        filtered(viewModel.providers.filter { $0.isOff })
+    }
+
+    private func filtered(_ list: [ProviderDTO]) -> [ProviderDTO] {
+        if searchText.isEmpty { return list }
+        return list.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.id.localizedCaseInsensitiveContains(searchText) ||
+            ($0.host?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    hero
+
+                    if let error = viewModel.errorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text(error)
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(MagpieTheme.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .magpieCard()
+                    }
+
+                    // 活跃 Providers 卡片列表
+                    if !activeProviders.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(String(localized: "已启用的提供方 (\(activeProviders.count))"))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(MagpieTheme.textMuted)
+
+                            MagpieGlassGroup(spacing: 10) {
+                                LazyVStack(spacing: 10) {
+                                    ForEach(activeProviders) { provider in
+                                        NavigationLink(value: provider.id) {
+                                            ProviderCard(provider: provider) { turnOn in
+                                                toggleProvider(provider.id, turnOn: turnOn)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .matchedTransitionSource(id: provider.id, in: zoomNamespace)
+                                        .contextMenu {
+                                            providerContextMenu(provider)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 已停用的 Providers 折叠卡片列表
+                    if !offProviders.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isOffExpanded.toggle()
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: isOffExpanded ? "chevron.down" : "chevron.right")
+                                        .font(.caption2.weight(.bold))
+                                    Text(String(localized: "已停用 (\(offProviders.count))"))
+                                        .font(.caption.weight(.semibold))
+                                    Spacer()
+                                }
+                                .foregroundStyle(MagpieTheme.textMuted)
+                            }
+                            .buttonStyle(.plain)
+
+                            if isOffExpanded {
+                                LazyVStack(spacing: 10) {
+                                    ForEach(offProviders) { provider in
+                                        NavigationLink(value: provider.id) {
+                                            ProviderCard(provider: provider) { turnOn in
+                                                toggleProvider(provider.id, turnOn: turnOn)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .matchedTransitionSource(id: provider.id, in: zoomNamespace)
+                                        .contextMenu {
+                                            providerContextMenu(provider)
+                                        }
+                                        .transition(.magpieContent)
+                                    }
+                                }
+                            }
+                        }
+                        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isOffExpanded)
+                    }
+
+                    // 底部快捷添加按钮
+                    Button {
+                        showingAddSheet = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.body.weight(.semibold))
+                            Text(String(localized: "添加模型提供商 (Provider)"))
+                                .font(.subheadline.weight(.medium))
+                        }
+                        .foregroundStyle(MagpieTheme.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(MagpieTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(MagpieTheme.accent.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.providers.map(\.id))
+            }
+            .magpiePageBackground()
+            .searchable(text: $searchText, prompt: String(localized: "搜索 Provider 或域名…"))
+            .navigationTitle(String(localized: "Providers"))
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .navigationDestination(for: String.self) { id in
+                ProviderDetailView(providerID: id)
+                    .navigationTransition(.zoom(sourceID: id, in: zoomNamespace))
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button {
+                            showingOrderSheet = true
+                        } label: {
+                            Label(String(localized: "调整 Provider 顺序…"), systemImage: "arrow.up.arrow.down")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingAddSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.body.weight(.semibold))
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAddSheet) {
+                AddProviderView()
+                    .environment(viewModel)
+            }
+            .sheet(isPresented: $showingOrderSheet) {
+                ProviderOrderSheet(providers: viewModel.providers) { order in
+                    guard let client = app.client else { return false }
+                    return await viewModel.arrange(client: client, order: order)
+                }
+            }
+            .alert(
+                String(localized: "连通性测试"),
+                isPresented: Binding(
+                    get: { testMessage != nil },
+                    set: { if !$0 { testMessage = nil } }
+                )
+            ) {
+                Button(String(localized: "好"), role: .cancel) { testMessage = nil }
+            } message: {
+                Text(testMessage ?? "")
+            }
+            .overlay {
+                if viewModel.isLoading && viewModel.providers.isEmpty {
+                    ProgressView(String(localized: "加载提供商列表…"))
+                }
+            }
+            .task {
+                if let client = app.client, viewModel.providers.isEmpty {
+                    await viewModel.load(client: client)
+                }
+            }
+            .refreshable {
+                if let client = app.client {
+                    await viewModel.load(client: client)
+                }
+            }
+        }
+        .environment(viewModel)
+    }
+
+    private func toggleProvider(_ id: String, turnOn: Bool) {
+        guard let client = app.client else { return }
+        Task {
+            await viewModel.toggle(client: client, id: id, turnOn: turnOn)
+        }
+    }
+
+    @ViewBuilder
+    private func providerContextMenu(_ provider: ProviderDTO) -> some View {
+        Button {
+            toggleProvider(provider.id, turnOn: provider.isOff)
+        } label: {
+            Label(
+                provider.isOff ? String(localized: "启用") : String(localized: "停用"),
+                systemImage: "power"
+            )
+        }
+
+        Button {
+            testProvider(provider)
+        } label: {
+            Label(String(localized: "测试连通性"), systemImage: "bolt.fill")
+        }
+
+        Button {
+            UIPasteboard.general.string = provider.id
+            MagpieHaptics.success()
+        } label: {
+            Label(String(localized: "复制 ID"), systemImage: "doc.on.doc")
+        }
+    }
+
+    private func testProvider(_ provider: ProviderDTO) {
+        guard let client = app.client else { return }
+        Task {
+            if let response = await viewModel.testResults(client: client, id: provider.id) {
+                let passed = response.results.filter { $0.succeeded }.count
+                let total = response.results.count
+                testMessage = total == 0
+                    ? String(localized: "没有可测试的端点")
+                    : String(localized: "\(passed)/\(total) 个端点通过")
+                if passed == total, total > 0 {
+                    MagpieHaptics.success()
+                }
+            } else {
+                testMessage = viewModel.testResult ?? String(localized: "测试失败")
+            }
+        }
+    }
+
+    // MARK: - 头部
+    private var hero: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [MagpieTheme.accent, Color(hex: "8b5cf6").opacity(0.78)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 46, height: 46)
+                    .shadow(color: MagpieTheme.accent.opacity(0.32), radius: 12, x: 0, y: 6)
+                Image(systemName: "key.radiowaves.forward.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(String(localized: "模型提供商"))
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                    .foregroundStyle(MagpieTheme.textPrimary)
+                Text(String(localized: "Key、端点、模型与故障转移来源"))
+                    .font(.caption)
+                    .foregroundStyle(MagpieTheme.textSecondary)
+            }
+
+            Spacer(minLength: 6)
+
+            VStack(alignment: .trailing, spacing: 5) {
+                HStack(spacing: 4) {
+                    Circle().fill(MagpieTheme.green).frame(width: 5, height: 5)
+                    Text(String(localized: "\(viewModel.providers.filter { !$0.isOff }.count) 启用"))
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(MagpieTheme.green)
+                }
+                Text(String(localized: "\(viewModel.providers.reduce(0) { $0 + ($1.models?.count ?? 0) }) 模型"))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(MagpieTheme.textMuted)
+            }
+        }
+        .magpieCard()
+    }
+}
+
+// MARK: - Provider 排序
+private struct ProviderOrderSheet: View {
+    let providers: [ProviderDTO]
+    let onSave: ([String]) async -> Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var items: [ProviderDTO] = []
+    @State private var working = false
+    @State private var errorMessage: String?
+    @State private var primed = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, provider in
+                        HStack(spacing: 10) {
+                            MagpieIconView(icon: provider.icon ?? provider.id, name: provider.name, size: 26, cornerRadius: 6)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(provider.name)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(MagpieTheme.textPrimary)
+                                Text(provider.id)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(MagpieTheme.textMuted)
+                            }
+                            Spacer()
+                            Button {
+                                move(index, by: -1)
+                            } label: {
+                                Image(systemName: "chevron.up")
+                                    .foregroundStyle(index == 0 ? MagpieTheme.textMuted.opacity(0.3) : MagpieTheme.textSecondary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(index == 0)
+                            Button {
+                                move(index, by: 1)
+                            } label: {
+                                Image(systemName: "chevron.down")
+                                    .foregroundStyle(index == items.count - 1 ? MagpieTheme.textMuted.opacity(0.3) : MagpieTheme.textSecondary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(index == items.count - 1)
+                        }
+                    }
+                } footer: {
+                    Text(String(localized: "顺序决定 Provider 列表的展示与同族模型的优先次序。"))
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(MagpieTheme.red)
+                    }
+                }
+            }
+            .navigationTitle(String(localized: "Provider 顺序"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "取消")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        save()
+                    } label: {
+                        if working {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text(String(localized: "保存")).fontWeight(.semibold)
+                        }
+                    }
+                    .disabled(working)
+                }
+            }
+            .onAppear {
+                guard !primed else { return }
+                primed = true
+                items = providers
+            }
+        }
+    }
+
+    private func move(_ index: Int, by offset: Int) {
+        let target = index + offset
+        guard items.indices.contains(index), items.indices.contains(target) else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            items.swapAt(index, target)
+        }
+        MagpieHaptics.light()
+    }
+
+    private func save() {
+        working = true
+        errorMessage = nil
+        Task {
+            let ok = await onSave(items.map(\.id))
+            working = false
+            if ok { dismiss() } else { errorMessage = String(localized: "保存失败，请稍后再试。") }
+        }
+    }
+}
+
+// MARK: - 原版风格 Provider 卡片
+private struct ProviderCard: View {
+    let provider: ProviderDTO
+    var onToggle: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .stroke(.white.opacity(0.16), lineWidth: 0.7)
+                    )
+                    .frame(width: 38, height: 38)
+                MagpieIconView(icon: provider.icon ?? provider.id, name: provider.name, size: 30, cornerRadius: 7)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(provider.name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(provider.isOff ? MagpieTheme.textMuted : MagpieTheme.textPrimary)
+
+                    if provider.isOff {
+                        Text(String(localized: "已停用"))
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(MagpieTheme.pill)
+                            .foregroundStyle(MagpieTheme.textMuted)
+                            .clipShape(Capsule())
+                    } else if provider.ready == true {
+                        Circle()
+                            .fill(MagpieTheme.green)
+                            .frame(width: 5, height: 5)
+                    }
+
+                    if provider.unlisted == true {
+                        Text(String(localized: "仅路由组"))
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(MagpieTheme.cyan.opacity(0.13))
+                            .foregroundStyle(MagpieTheme.cyan)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    if let host = provider.host, !host.isEmpty {
+                        Text(host)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                            .lineLimit(1)
+                    }
+
+                    if let count = provider.models?.count, count > 0 {
+                        Text("• \(count) 个模型")
+                            .font(.caption2)
+                            .foregroundStyle(MagpieTheme.textSecondary)
+                    }
+
+                    if let keys = provider.keyList, !keys.isEmpty {
+                        Text("• \(keys.count) 个 Key")
+                            .font(.caption2)
+                            .foregroundStyle(MagpieTheme.textSecondary)
+                    } else if let masked = provider.key?.masked, !masked.isEmpty {
+                        Text("• \(masked)")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer()
+
+            // 快捷开关
+            Button {
+                onToggle(provider.isOff)
+            } label: {
+                Image(systemName: provider.isOff ? "power.circle" : "power.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(provider.isOff ? MagpieTheme.textMuted : MagpieTheme.green)
+            }
+            .buttonStyle(.plain)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(MagpieTheme.textMuted)
+        }
+        .magpieCard(padding: 14, cornerRadius: 18)
+    }
+}
