@@ -463,11 +463,17 @@ final class RoutingViewModel {
     private var pollingTask: Task<Void, Never>?
     private var daysRefreshTask: Task<Void, Never>?
 
+    /// 高频路由事件合并到最多 5Hz 刷新，避免每个事件都重建整页 SwiftUI 视图。
+    private var pendingPublish: [GatewayRouteDTO]?
+    private var publishTask: Task<Void, Never>?
+    private var lastPublishAt: Date = .distantPast
+
     // MARK: - 实时长轮询核心引擎
 
     /// 启动真正的长轮询（Long-polling）监听
     func startRealtimeTrace(client: MagpieAPIClient) {
         stopPolling()
+        cancelPendingPublish()
         selectedDay = nil
         totals = nil
 
@@ -544,12 +550,11 @@ final class RoutingViewModel {
                     }
                 }
 
-                // 仅在 Live 模式下更新展示（若内容无变化则不重设，防止高频触发 UI 漂移重排）
+                // 仅在 Live 模式下更新展示；多个事件在 200ms 窗口内合并成一次 UI 更新。
                 if selectedDay == nil {
                     let newRoutes = Array(sortedList.prefix(100))
                     if self.routes != newRoutes {
-                        self.routes = newRoutes
-                        self.lastUpdated = Date()
+                        schedulePublish(newRoutes)
                     }
                     self.errorMessage = nil
                 }
@@ -570,13 +575,45 @@ final class RoutingViewModel {
         pollingTask = nil
         daysRefreshTask?.cancel()
         daysRefreshTask = nil
+        cancelPendingPublish()
         isLongPollingActive = false
+    }
+
+    private func schedulePublish(_ routes: [GatewayRouteDTO]) {
+        pendingPublish = routes
+        guard publishTask == nil else { return }
+
+        let wait = max(0, 0.2 - Date().timeIntervalSince(lastPublishAt))
+        publishTask = Task { [weak self] in
+            if wait > 0 {
+                try? await Task.sleep(for: .seconds(wait))
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.publishPending()
+        }
+    }
+
+    private func publishPending() {
+        publishTask = nil
+        guard let routes = pendingPublish else { return }
+        pendingPublish = nil
+        guard self.routes != routes else { return }
+        self.routes = routes
+        self.lastUpdated = Date()
+        lastPublishAt = Date()
+    }
+
+    private func cancelPendingPublish() {
+        publishTask?.cancel()
+        publishTask = nil
+        pendingPublish = nil
     }
 
     // MARK: - 历史模式切换
 
     /// 切换查看历史某一天
     func selectDay(_ day: String?, client: MagpieAPIClient) async {
+        cancelPendingPublish()
         if day == nil {
             // 切回 Live 实时流
             selectedDay = nil
@@ -624,6 +661,7 @@ final class RoutingViewModel {
 
     /// 手动刷新
     func refresh(client: MagpieAPIClient) async {
+        cancelPendingPublish()
         if let day = selectedDay {
             await selectDay(day, client: client)
         } else {

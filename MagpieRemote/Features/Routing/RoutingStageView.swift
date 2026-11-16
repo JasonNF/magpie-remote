@@ -19,6 +19,7 @@ struct RoutingStageCard: View {
     let onFilter: (RouteFilterStatus) -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var anchors: [String: CGRect] = [:]
     @State private var accountsExpanded = true
     @State private var appeared = false
@@ -54,6 +55,11 @@ struct RoutingStageCard: View {
             out["agent-\(index)"] = RoutingStagePalette.color(for: agent.id)
         }
         return out
+    }
+
+    /// 每帧都重新构造飞行路径会拖慢主线程；只在锚点或数据变化时计算一次。
+    private var stageFlights: [RoutingFlight] {
+        RoutingStageFliers.makeFlights(anchors: anchors, colors: agentWireColors, accent: accent)
     }
 
     var body: some View {
@@ -227,23 +233,27 @@ struct RoutingStageCard: View {
             }
         }
         .coordinateSpace(name: "routing-stage")
-        .onPreferenceChange(RoutingStageAnchorKey.self) { anchors = $0 }
+        .onPreferenceChange(RoutingStageAnchorKey.self) { newAnchors in
+            // 布局稳定后 preference 会重复触发；不比较会形成无意义的更新循环。
+            guard newAnchors != anchors else { return }
+            anchors = newAnchors
+        }
         .background(
             RoutingStageWires(
                 anchors: anchors,
                 colors: agentWireColors,
-                accent: accent
+                accent: accent,
+                animated: isLive && !reduceMotion
             )
             .allowsHitTesting(false)
         )
-        .overlay(
-            RoutingStageFliers(
-                anchors: anchors,
-                colors: agentWireColors,
-                accent: accent
-            )
-            .allowsHitTesting(false)
-        )
+        .overlay {
+            // 没有进行中的请求时不播放飞鸟，避免空闲页面持续重绘。
+            if isLive && !reduceMotion {
+                RoutingStageFliers(flights: stageFlights)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     // MARK: - 底部解说与 KPI
@@ -477,7 +487,7 @@ private struct RoutingStageHubNode: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            MagpieLogoView(size: 26, showText: false)
+            MagpieLogoView(size: 26, showText: false, isAnimated: false)
                 .padding(.bottom, 3)
 
             Text("magpie")
@@ -798,75 +808,83 @@ private struct RoutingStageWires: View {
     let anchors: [String: CGRect]
     let colors: [String: Color]
     let accent: Color
+    let animated: Bool
 
     var body: some View {
-        TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 20.0)) { timeline in
-            Canvas { context, _ in
-                guard !anchors.isEmpty else { return }
-                let phase = -CGFloat(timeline.date.timeIntervalSinceReferenceDate * 6)
-                let style = StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 5], dashPhase: phase)
+        if animated {
+            TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 10.0)) { timeline in
+                canvas(phase: -CGFloat(timeline.date.timeIntervalSinceReferenceDate * 4))
+            }
+        } else {
+            canvas(phase: 0)
+        }
+    }
 
-                let hub = anchors["hub"]
-                let accounts = anchors["accounts"]
-                let agentKeys = anchors.keys
-                    .filter { $0.hasPrefix("agent-") }
-                    .sorted()
+    private func canvas(phase: CGFloat) -> some View {
+        Canvas { context, _ in
+            guard !anchors.isEmpty else { return }
+            let style = StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 5], dashPhase: phase)
 
-                if let hub {
-                    for key in agentKeys {
-                        guard let agent = anchors[key] else { continue }
-                        let start = CGPoint(x: agent.maxX, y: agent.midY)
-                        let end = CGPoint(x: hub.minX, y: hub.midY)
-                        var path = Path()
-                        path.move(to: start)
-                        path.addCurve(
-                            to: end,
-                            control1: CGPoint(x: start.x + (end.x - start.x) * 0.45, y: start.y),
-                            control2: CGPoint(x: start.x + (end.x - start.x) * 0.55, y: end.y)
-                        )
-                        context.stroke(path, with: .color(colors[key] ?? accent), style: style)
-                    }
-                }
+            let hub = anchors["hub"]
+            let accounts = anchors["accounts"]
+            let agentKeys = anchors.keys
+                .filter { $0.hasPrefix("agent-") }
+                .sorted()
 
-                guard let hub, let accounts else { return }
-                let accountKeys = anchors.keys
-                    .filter { $0.hasPrefix("account-") }
-                    .sorted()
-
-                if accounts.minX < hub.midX {
-                    let laneX = accounts.minX - 10
-                    let lastY = accountKeys.compactMap { anchors[$0]?.midY }.max() ?? accounts.midY
-                    var trunk = Path()
-                    trunk.move(to: CGPoint(x: hub.midX, y: hub.maxY))
-                    trunk.addCurve(
-                        to: CGPoint(x: laneX, y: hub.maxY + 16),
-                        control1: CGPoint(x: hub.midX, y: hub.maxY + 10),
-                        control2: CGPoint(x: laneX, y: hub.maxY + 6)
+            if let hub {
+                for key in agentKeys {
+                    guard let agent = anchors[key] else { continue }
+                    let start = CGPoint(x: agent.maxX, y: agent.midY)
+                    let end = CGPoint(x: hub.minX, y: hub.midY)
+                    var path = Path()
+                    path.move(to: start)
+                    path.addCurve(
+                        to: end,
+                        control1: CGPoint(x: start.x + (end.x - start.x) * 0.45, y: start.y),
+                        control2: CGPoint(x: start.x + (end.x - start.x) * 0.55, y: end.y)
                     )
-                    trunk.addLine(to: CGPoint(x: laneX, y: lastY))
-                    context.stroke(trunk, with: .color(accent.opacity(0.75)), style: style)
+                    context.stroke(path, with: .color(colors[key] ?? accent), style: style)
+                }
+            }
 
-                    for key in accountKeys {
-                        guard let row = anchors[key] else { continue }
-                        var stub = Path()
-                        stub.move(to: CGPoint(x: laneX, y: row.midY))
-                        stub.addLine(to: CGPoint(x: row.minX, y: row.midY))
-                        context.stroke(stub, with: .color(accent.opacity(0.75)), style: style)
-                    }
-                } else {
-                    for key in accountKeys {
-                        guard let row = anchors[key] else { continue }
-                        let start = CGPoint(x: hub.maxX, y: hub.midY)
-                        let end = CGPoint(x: row.minX, y: row.midY)
-                        var path = Path()
-                        path.move(to: start)
-                        path.addCurve(
-                            to: end,
-                            control1: CGPoint(x: start.x + 20, y: start.y),
-                            control2: CGPoint(x: end.x - 20, y: end.y)
-                        )
-                        context.stroke(path, with: .color(accent.opacity(0.75)), style: style)
-                    }
+            guard let hub, let accounts else { return }
+            let accountKeys = anchors.keys
+                .filter { $0.hasPrefix("account-") }
+                .sorted()
+
+            if accounts.minX < hub.midX {
+                let laneX = accounts.minX - 10
+                let lastY = accountKeys.compactMap { anchors[$0]?.midY }.max() ?? accounts.midY
+                var trunk = Path()
+                trunk.move(to: CGPoint(x: hub.midX, y: hub.maxY))
+                trunk.addCurve(
+                    to: CGPoint(x: laneX, y: hub.maxY + 16),
+                    control1: CGPoint(x: hub.midX, y: hub.maxY + 10),
+                    control2: CGPoint(x: laneX, y: hub.maxY + 6)
+                )
+                trunk.addLine(to: CGPoint(x: laneX, y: lastY))
+                context.stroke(trunk, with: .color(accent.opacity(0.75)), style: style)
+
+                for key in accountKeys {
+                    guard let row = anchors[key] else { continue }
+                    var stub = Path()
+                    stub.move(to: CGPoint(x: laneX, y: row.midY))
+                    stub.addLine(to: CGPoint(x: row.minX, y: row.midY))
+                    context.stroke(stub, with: .color(accent.opacity(0.75)), style: style)
+                }
+            } else {
+                for key in accountKeys {
+                    guard let row = anchors[key] else { continue }
+                    let start = CGPoint(x: hub.maxX, y: hub.midY)
+                    let end = CGPoint(x: row.minX, y: row.midY)
+                    var path = Path()
+                    path.move(to: start)
+                    path.addCurve(
+                        to: end,
+                        control1: CGPoint(x: start.x + 20, y: start.y),
+                        control2: CGPoint(x: end.x - 20, y: end.y)
+                    )
+                    context.stroke(path, with: .color(accent.opacity(0.75)), style: style)
                 }
             }
         }
@@ -878,11 +896,13 @@ private struct RoutingStageWires: View {
 /// 在舞台虚线上飞行的小 magpie logo：出站从 Agent 飞向枢纽，再从枢纽飞向候选账号；
 /// 返程从账号飞回枢纽。路径使用与虚线一致的控制点，鸟身随切线轻微倾斜。
 private struct RoutingStageFliers: View {
-    let anchors: [String: CGRect]
-    let colors: [String: Color]
-    let accent: Color
+    let flights: [RoutingFlight]
 
-    private var flights: [RoutingFlight] {
+    static func makeFlights(
+        anchors: [String: CGRect],
+        colors: [String: Color],
+        accent: Color
+    ) -> [RoutingFlight] {
         guard let hub = anchors["hub"] else { return [] }
         var out: [RoutingFlight] = []
 
@@ -969,7 +989,7 @@ private struct RoutingStageFliers: View {
     }
 
     var body: some View {
-        TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 24.0)) { timeline in
+        TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 15.0)) { timeline in
             let now = timeline.date.timeIntervalSinceReferenceDate
             ZStack(alignment: .topLeading) {
                 ForEach(flights) { flight in

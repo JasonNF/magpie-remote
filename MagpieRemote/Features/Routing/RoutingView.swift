@@ -107,13 +107,10 @@ struct RoutingView: View {
                     Button {
                         showingGroupsSheet = true
                     } label: {
-                        HStack(spacing: 3) {
-                            Text(String(localized: "路由组"))
-                                .font(.system(size: 12, weight: .medium))
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 9, weight: .bold))
-                        }
+                        Image(systemName: "square.3.layers.3d")
+                            .font(.body.weight(.medium))
                     }
+                    .accessibilityLabel(String(localized: "路由组"))
                 }
 
                 // 3. 刷新按钮
@@ -242,7 +239,7 @@ struct RoutingView: View {
                         .foregroundStyle(MagpieTheme.textMuted)
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .frame(height: 30)
                 .background(MagpieTheme.card)
                 .clipShape(Capsule())
                 .overlay(
@@ -268,7 +265,7 @@ struct RoutingView: View {
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
+                        .frame(height: 26)
                         .background(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
                                 .fill(viewModel.viewMode == mode ? MagpieTheme.card : Color.clear)
@@ -279,7 +276,8 @@ struct RoutingView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(2)
+            .padding(.horizontal, 2)
+            .frame(height: 30)
             .background(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(MagpieTheme.pill)
