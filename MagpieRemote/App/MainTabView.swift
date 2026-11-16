@@ -280,46 +280,49 @@ struct MainTabView: View {
         }
     }
 
-    /// 点击「更多」只弹气泡，不切换页面；再点一次或选择其他 Tab 关闭。
-    private var compactSelectionBinding: Binding<AppPage> {
+    /// 自定义底栏的选中状态：切换页面时顺便关闭「更多」气泡。
+    private var barSelection: Binding<AppPage> {
         Binding(
             get: { compactSelection },
             set: { newValue in
-                if newValue == .more {
-                    MagpieHaptics.light()
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        isMoreBubblePresented.toggle()
-                    }
-                } else {
-                    compactSelection = newValue
-                    withAnimation(.snappy(duration: 0.2)) {
-                        isMoreBubblePresented = false
-                    }
+                compactSelection = newValue
+                withAnimation(.snappy(duration: 0.2)) {
+                    isMoreBubblePresented = false
                 }
             }
         )
     }
 
-    // MARK: - iPhone (100% 官方系统原生 TabView)
+    // MARK: - iPhone（自定义 Liquid Glass 底栏 + 气泡 More）
     private var compactTabs: some View {
-        TabView(selection: compactSelectionBinding) {
-            ForEach(tabStore.pinnedTabs) { page in
-                Tab(page.shortTitle, systemImage: page.icon, value: page) {
-                    page.destination
+        ZStack(alignment: .bottom) {
+            TabView(selection: $compactSelection) {
+                ForEach(tabStore.pinnedTabs) { page in
+                    Tab(page.shortTitle, systemImage: page.icon, value: page) {
+                        page.destination
+                            .toolbar(.hidden, for: .tabBar)
+                    }
+                }
+            }
+            .toolbar(.hidden, for: .tabBar)
+            .onChange(of: tabStore.pinnedTabs) { _, newPinned in
+                if !newPinned.contains(compactSelection) {
+                    compactSelection = newPinned.first ?? .agents
                 }
             }
 
-            Tab(String(localized: "更多"), systemImage: "ellipsis.circle.fill", value: AppPage.more) {
-                MoreView()
-            }
-        }
-        .tint(MagpieTheme.accent)
-        .toolbarBackground(.visible, for: .tabBar)
-        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
-        .onChange(of: tabStore.pinnedTabs) { _, newPinned in
-            if compactSelection != .more && !newPinned.contains(compactSelection) {
-                compactSelection = newPinned.first ?? .agents
-            }
+            MagpieLiquidTabBar(
+                pinnedTabs: tabStore.pinnedTabs,
+                selectedTab: barSelection,
+                isMoreOpen: isMoreBubblePresented,
+                onToggleMore: {
+                    MagpieHaptics.light()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                        isMoreBubblePresented.toggle()
+                    }
+                }
+            )
+            .padding(.bottom, 8)
         }
     }
 
@@ -447,7 +450,7 @@ struct MagpieLiquidTabBar: View {
     }
 
     private func tabButton(_ tab: AppPage) -> some View {
-        let isSelected = selectedTab == tab && (!isMoreOpen || selectedTab != .more)
+        let isSelected = !isMoreOpen && selectedTab == tab
 
         return Button {
             if selectedTab != tab || isMoreOpen {
@@ -462,7 +465,7 @@ struct MagpieLiquidTabBar: View {
                     .font(.system(size: isSelected ? 17 : 16, weight: isSelected ? .bold : .medium))
                     .foregroundStyle(isSelected ? tab.primaryColor : MagpieTheme.textMuted)
 
-                Text(tab.title)
+                Text(tab.shortTitle)
                     .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
                     .foregroundStyle(isSelected ? tab.primaryColor : MagpieTheme.textMuted)
                     .lineLimit(1)
