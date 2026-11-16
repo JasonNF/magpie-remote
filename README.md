@@ -1,7 +1,7 @@
 # Magpie Remote (iOS / iPadOS)
 
 <p align="center">
-  <img src="MagpieRemote/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="Magpie Remote Logo" width="108" height="108" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
+  <img src="MagpieRemote/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" alt="Magpie Remote Logo" width="108" height="108" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/iPadOS-26.0%2B-157EFB?style=flat-square&logo=apple&logoColor=white" alt="iPadOS 26.0+" />
   <img src="https://img.shields.io/badge/Dependencies-0-success?style=flat-square" alt="Zero Dependencies" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="MIT License" />
-  <img src="https://img.shields.io/github/actions/workflow/status/your-username/magpie-remote/release.yml?branch=main&style=flat-square&label=Build%20IPA" alt="Build Status" />
+  <img src="https://img.shields.io/github/actions/workflow/status/zxfccmm4/magpie-remote/release.yml?branch=main&style=flat-square&label=Build%20IPA" alt="Build Status" />
 </p>
 
 ---

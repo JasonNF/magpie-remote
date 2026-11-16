@@ -2,6 +2,8 @@ name: Build & Release IPA
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   release:
@@ -9,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: '发布版本号（如 1.0.0）'
+        description: '发布版本号（如 1.0.0，留空则使用 project.yml 中的版本）'
         required: false
-        default: '0.1.0'
+        default: ''
 
 permissions:
   contents: write
@@ -19,16 +21,22 @@ permissions:
 jobs:
   build-ipa:
     name: Build & Export iOS IPA
-    runs-on: macos-15
+    # iOS 26 SDK（Liquid Glass / GlassEffect / tabBarMinimizeBehavior）需要 Xcode 26+，
+    # macos-15 自带 Xcode 16.4（iOS 18.5 SDK），必然编译失败。
+    runs-on: macos-26
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Xcode
+      - name: Select Latest Xcode 26
         run: |
-          # 优先匹配并选用系统最新的 Xcode 版本
-          sudo xcode-select -switch /Applications/Xcode.app/Contents/Developer
+          set -euo pipefail
+          XCODE_APP="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$XCODE_APP" ]; then
+            XCODE_APP="/Applications/Xcode.app"
+          fi
+          sudo xcode-select -switch "$XCODE_APP/Contents/Developer"
           xcodebuild -version
 
       - name: Install XcodeGen
@@ -39,12 +47,29 @@ jobs:
           xcodegen --version
 
       - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Resolve Version
+        id: version
         run: |
-          xcodegen generate
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ inputs.version_name }}"
+          fi
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION:-<project.yml default>}"
 
       - name: Build & Archive (Unsigned for Sideloading)
+        env:
+          VERSION_OVERRIDE: ${{ steps.version.outputs.value }}
         run: |
+          set -euo pipefail
           mkdir -p build/archive
+          VERSION_ARGS=()
+          if [ -n "$VERSION_OVERRIDE" ]; then
+            VERSION_ARGS+=("MARKETING_VERSION=$VERSION_OVERRIDE")
+          fi
           xcodebuild archive \
             -project MagpieRemote.xcodeproj \
             -scheme MagpieRemote \
@@ -53,10 +78,12 @@ jobs:
             -archivePath build/archive/MagpieRemote.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            "${VERSION_ARGS[@]}"
 
       - name: Package IPA
         run: |
+          set -euo pipefail
           mkdir -p build/ipa/Payload
           cp -r "build/archive/MagpieRemote.xcarchive/Products/Applications/MagpieRemote.app" build/ipa/Payload/
           cd build/ipa
