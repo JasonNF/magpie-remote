@@ -37,7 +37,7 @@ struct AboutView: View {
     private static let magpieRepository = "https://github.com/yetone/magpie"
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2.0"
     }
 
     private var buildNumber: String {
