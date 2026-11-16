@@ -1,8 +1,4 @@
 <p align="center">
-  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
-</p>
-
-<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/app-icon-dark.png">
     <img src="MagpieRemote/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" alt="Magpie Remote" width="112" height="112">
@@ -10,6 +6,10 @@
 </p>
 
 <h1 align="center">Magpie Remote</h1>
+
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
 <p align="center">
   <strong>A native Apple control center built for <a href="https://github.com/yetone/magpie">yetone/magpie</a></strong><br>
