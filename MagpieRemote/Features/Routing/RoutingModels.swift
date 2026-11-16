@@ -5,7 +5,7 @@ import Observation
 // MARK: - 网关路由模型 (与 Go 后端 traceJSON / routeJSON / gateway.Route 1:1 对齐)
 
 /// `GET /api/gateway/history` 历史响应
-struct GatewayHistoryDTO: Codable, Sendable {
+struct GatewayHistoryDTO: Decodable, Sendable {
     var days: [String]?
     var routes: [GatewayRouteDTO]?
     var cut: Bool?
@@ -22,7 +22,7 @@ struct GatewayHistoryDTO: Codable, Sendable {
     }
 }
 
-struct GatewayTalliesDTO: Codable, Sendable {
+struct GatewayTalliesDTO: Codable, Sendable, Equatable {
     var requests: Int?
     var rerouted: Int?
     var errors: Int?
@@ -30,7 +30,7 @@ struct GatewayTalliesDTO: Codable, Sendable {
 }
 
 /// `GET /api/gateway/trace` 实时长轮询响应
-struct GatewayTraceDTO: Codable, Sendable {
+struct GatewayTraceDTO: Decodable, Sendable {
     var routes: [GatewayRouteDTO]?
     var mine: Bool?
     var now: String?
@@ -99,7 +99,7 @@ struct GatewayUsageItemDTO: Codable, Sendable, Hashable {
 }
 
 /// 单次路由决策的完整实体（原版 routeJSON / gateway.Route）
-struct GatewayRouteDTO: Codable, Sendable, Identifiable, Hashable {
+struct GatewayRouteDTO: Decodable, Sendable, Identifiable, Hashable {
     var id: Int64
     var seq: Int64?
     var time: String?
@@ -127,6 +127,9 @@ struct GatewayRouteDTO: Codable, Sendable, Identifiable, Hashable {
     var served: String?
     var usage: [GatewayUsageItemDTO]?
 
+    /// 解码时解析一次的时间，供排序、分组与渲染复用，避免反复创建 ISO8601 formatter。
+    private(set) var parsedDate: Date?
+
     enum CodingKeys: String, CodingKey {
         case id, seq, time, agent, model, provider, group, order, done, status
         case error, canceled, millis, ttft, tokens, out, cost, priced, kind
@@ -142,6 +145,7 @@ struct GatewayRouteDTO: Codable, Sendable, Identifiable, Hashable {
         self.id = (try? c.decode(Int64.self, forKey: .id)) ?? 0
         self.seq = try? c.decodeIfPresent(Int64.self, forKey: .seq)
         self.time = try? c.decodeIfPresent(String.self, forKey: .time)
+        self.parsedDate = Self.parseISO8601(self.time)
         self.agent = try? c.decodeIfPresent(String.self, forKey: .agent)
         self.model = try? c.decodeIfPresent(String.self, forKey: .model)
         self.provider = try? c.decodeIfPresent(String.self, forKey: .provider)
@@ -171,15 +175,17 @@ struct GatewayRouteDTO: Codable, Sendable, Identifiable, Hashable {
     var isPending: Bool { done != true }
     var isSuccess: Bool { !isPending && !isError && canceled != true }
 
-    var date: Date? {
-        guard let time else { return nil }
+    var date: Date? { parsedDate }
+
+    private static func parseISO8601(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
         let withFraction = ISO8601DateFormatter()
         withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: time) { return date }
+        if let date = withFraction.date(from: raw) { return date }
 
         let plain = ISO8601DateFormatter()
         plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: time)
+        return plain.date(from: raw)
     }
 
     /// 有效会话标识（合并 parentSession）
@@ -464,7 +470,8 @@ final class RoutingViewModel {
     private var daysRefreshTask: Task<Void, Never>?
 
     /// 高频路由事件合并到最多 5Hz 刷新，避免每个事件都重建整页 SwiftUI 视图。
-    private var pendingPublish: [GatewayRouteDTO]?
+    private var pendingRouteList: [GatewayRouteDTO]?
+    private var pendingTotals: GatewayTalliesDTO?
     private var publishTask: Task<Void, Never>?
     private var lastPublishAt: Date = .distantPast
 
@@ -513,7 +520,7 @@ final class RoutingViewModel {
                 if Task.isCancelled { break }
 
                 isLiveMine = trace.mine ?? true
-                if let newTotals = trace.totals { totals = newTotals }
+                if let newTotals = trace.totals { pendingTotals = newTotals }
                 if let newSeq = trace.seq {
                     if newSeq < lastSeq {
                         // 网关重置，清空内存池
@@ -553,10 +560,9 @@ final class RoutingViewModel {
                 // 仅在 Live 模式下更新展示；多个事件在 200ms 窗口内合并成一次 UI 更新。
                 if selectedDay == nil {
                     let newRoutes = Array(sortedList.prefix(100))
-                    if self.routes != newRoutes {
+                    if self.routes != newRoutes || (pendingTotals != nil && pendingTotals != totals) {
                         schedulePublish(newRoutes)
                     }
-                    self.errorMessage = nil
                 }
 
                 initial = false
@@ -580,7 +586,7 @@ final class RoutingViewModel {
     }
 
     private func schedulePublish(_ routes: [GatewayRouteDTO]) {
-        pendingPublish = routes
+        pendingRouteList = routes
         guard publishTask == nil else { return }
 
         let wait = max(0, 0.2 - Date().timeIntervalSince(lastPublishAt))
@@ -595,24 +601,42 @@ final class RoutingViewModel {
 
     private func publishPending() {
         publishTask = nil
-        guard let routes = pendingPublish else { return }
-        pendingPublish = nil
-        guard self.routes != routes else { return }
-        self.routes = routes
-        self.lastUpdated = Date()
+        guard let routes = pendingRouteList else { return }
+        pendingRouteList = nil
+        let newTotals = pendingTotals
+        pendingTotals = nil
+
+        var didChange = false
+        if self.routes != routes {
+            self.routes = routes
+            didChange = true
+        }
+        if let newTotals, newTotals != totals {
+            totals = newTotals
+            didChange = true
+        }
+        if errorMessage != nil {
+            errorMessage = nil
+            didChange = true
+        }
+        if didChange {
+            lastUpdated = Date()
+        }
         lastPublishAt = Date()
     }
 
     private func cancelPendingPublish() {
         publishTask?.cancel()
         publishTask = nil
-        pendingPublish = nil
+        pendingRouteList = nil
+        pendingTotals = nil
     }
 
     // MARK: - 历史模式切换
 
     /// 切换查看历史某一天
     func selectDay(_ day: String?, client: MagpieAPIClient) async {
+        let liveTotals = pendingTotals
         cancelPendingPublish()
         if day == nil {
             // 切回 Live 实时流
@@ -622,6 +646,8 @@ final class RoutingViewModel {
             if pollingTask == nil {
                 startRealtimeTrace(client: client)
             }
+            self.totals = liveTotals
+            self.errorMessage = nil
             return
         }
 
