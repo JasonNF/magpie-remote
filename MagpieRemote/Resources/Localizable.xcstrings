@@ -1414,6 +1414,9 @@
         }
       }
     },
+    "About" : {
+
+    },
     "ADMIN" : {
       "localizations" : {
         "en" : {
@@ -2422,6 +2425,9 @@
         }
       }
     },
+    "Magpie Remote · 原生 SwiftUI" : {
+
+    },
     "Magpie Remote %@ · 原生 SwiftUI" : {
       "localizations" : {
         "en" : {
@@ -2437,6 +2443,9 @@
           }
         }
       }
+    },
+    "Magpie Remote 不收集遥测数据；连接地址与 Web Key 只保存在这台设备上。" : {
+
     },
     "MAGPIE WEB 服务器" : {
       "localizations" : {
@@ -4309,6 +4318,9 @@
           }
         }
       }
+    },
+    "为 magpie 而作" : {
+
     },
     "为 Sessions 与用量统计保留请求内容" : {
       "localizations" : {
@@ -6261,6 +6273,9 @@
           }
         }
       }
+    },
+    "最后更新：2026 年 11 月" : {
+
     },
     "最多 256 KB" : {
       "localizations" : {
@@ -14810,6 +14825,9 @@
         }
       }
     },
+    "概览" : {
+
+    },
     "模型" : {
       "localizations" : {
         "en" : {
@@ -16470,6 +16488,19 @@
         }
       }
     },
+    "版本 %@ (%@)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "版本 %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "版本、致谢与隐私" : {
+
+    },
     "特大" : {
       "localizations" : {
         "en" : {
@@ -16517,6 +16548,9 @@
           }
         }
       }
+    },
+    "用 SwiftUI 原生构建 · 零第三方依赖" : {
+
     },
     "用你自己的模型一键生成常用组" : {
       "localizations" : {
@@ -16997,6 +17031,9 @@
           }
         }
       }
+    },
+    "相关链接" : {
+
     },
     "知识库" : {
       "localizations" : {
@@ -18619,6 +18656,9 @@
           }
         }
       }
+    },
+    "要点" : {
+
     },
     "要记住的事" : {
       "localizations" : {
@@ -20847,6 +20887,9 @@
         }
       }
     },
+    "远程管理你的 magpie AI 网关" : {
+
+    },
     "连接与密钥" : {
       "localizations" : {
         "en" : {
@@ -21940,6 +21983,9 @@
           }
         }
       }
+    },
+    "隐私政策" : {
+
     },
     "隐藏 Agent 自带模型" : {
       "localizations" : {

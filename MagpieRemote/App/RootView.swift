@@ -153,6 +153,8 @@ private struct DevPreviewHost: View {
                             }
                         }
                 }
+            case "about":
+                AboutView()
             default:
                 Color.clear
             }

@@ -14,6 +14,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
     case masking
     case plugins
     case settings
+    case about
     case more
 
     var id: String { rawValue }
@@ -31,6 +32,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return String(localized: "脱敏规则")
         case .plugins: return String(localized: "扩展插件")
         case .settings: return String(localized: "客户端设置")
+        case .about: return String(localized: "关于")
         case .more: return String(localized: "更多")
         }
     }
@@ -48,6 +50,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return String(localized: "脱敏")
         case .plugins: return String(localized: "插件")
         case .settings: return String(localized: "设置")
+        case .about: return String(localized: "关于")
         case .more: return String(localized: "更多")
         }
     }
@@ -65,6 +68,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return String(localized: "敏感数据过滤")
         case .plugins: return String(localized: "扩展插件与市场")
         case .settings: return String(localized: "服务器与偏好设置")
+        case .about: return String(localized: "版本、致谢与隐私")
         case .more: return String(localized: "全部页面与系统设置")
         }
     }
@@ -82,6 +86,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return "shield.lefthalf.filled"
         case .plugins: return "puzzlepiece.extension"
         case .settings: return "gearshape"
+        case .about: return "info.circle"
         case .more: return "ellipsis.circle.fill"
         }
     }
@@ -99,6 +104,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return [Color(hex: "14b8a6"), Color(hex: "0d9488")]
         case .plugins: return [Color(hex: "ec4899"), Color(hex: "db2777")]
         case .settings: return [Color(hex: "64748b"), Color(hex: "334155")]
+        case .about: return [MagpieTheme.accent, MagpieTheme.purple]
         case .more: return [MagpieTheme.accent, MagpieTheme.purple]
         }
     }
@@ -122,6 +128,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
         case .masking: MaskingView()
         case .plugins: PluginsView()
         case .settings: SettingsView()
+        case .about: AboutView()
         case .more: MoreView()
         }
     }
@@ -391,6 +398,12 @@ struct MainTabView: View {
                 SettingsView()
             } label: {
                 Label("Settings", systemImage: "gearshape")
+            }
+
+            Tab(value: AppPage.about) {
+                AboutView()
+            } label: {
+                Label("About", systemImage: "info.circle")
             }
         }
         .tabViewStyle(.sidebarAdaptable)

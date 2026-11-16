@@ -229,6 +229,7 @@ enum MorePage: String, Hashable, CaseIterable, Identifiable {
     case masking
     case plugins
     case settings
+    case about
 
     var id: String { rawValue }
 
@@ -241,6 +242,7 @@ enum MorePage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return String(localized: "Masking")
         case .plugins: return String(localized: "Plugins")
         case .settings: return String(localized: "Settings")
+        case .about: return String(localized: "关于")
         }
     }
 
@@ -257,6 +259,7 @@ enum MorePage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return "shield.lefthalf.filled"
         case .plugins: return "puzzlepiece.extension"
         case .settings: return "gearshape"
+        case .about: return "info.circle"
         }
     }
 
@@ -269,6 +272,7 @@ enum MorePage: String, Hashable, CaseIterable, Identifiable {
         case .masking: return [Color(hex: "14b8a6"), Color(hex: "0d9488")]
         case .plugins: return [Color(hex: "ec4899"), Color(hex: "db2777")]
         case .settings: return [Color(hex: "64748b"), Color(hex: "334155")]
+        case .about: return [MagpieTheme.accent, MagpieTheme.purple]
         }
     }
 
@@ -290,6 +294,8 @@ enum MorePage: String, Hashable, CaseIterable, Identifiable {
             PluginsView()
         case .settings:
             SettingsView()
+        case .about:
+            AboutView()
         }
     }
 }
