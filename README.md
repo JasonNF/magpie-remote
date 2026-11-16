@@ -60,7 +60,7 @@ magpie web --addr 0.0.0.0:3426 --lan --no-open
 
 ### 2. 安装 Magpie Remote
 
-- **GitHub Releases（推荐）** — 发布新版本后，GitHub Actions 会构建 `MagpieRemote.ipa`。前往 [Releases](../../releases) 下载，用 **TrollStore**、**AltStore** 或 **SideStore** 自签安装。
+- **GitHub Releases（推荐）** — 发布新版本后，GitHub Actions 会构建 `MagpieRemote.ipa`。前往 [最新 Release](../../releases/latest) 下载，用 **TrollStore**、**AltStore** 或 **SideStore** 自签安装。
 - **本地编译** — 按下方「从源码构建」使用 Xcode 直接部署到真机或模拟器。
 
 ### 3. 连接你的实例
