@@ -110,9 +110,10 @@ xcodebuild -project MagpieRemote.xcodeproj \
 
 CI/CD is defined in [`.github/workflows/release.yml`](.github/workflows/release.yml):
 
-- **Triggers** — push to `main`, push a `v*` tag, publish a Release, or run the workflow manually.
+- **Triggers** — every push to `main`, push a `v*` tag, publish a Release, or run the workflow manually.
+- **Version** — main pushes automatically bump the patch version from the latest `v*` tag; tag pushes and manual runs can set an exact version.
 - **Build** — On a `macos-26` runner, Xcode 26 creates an unsigned archive, exports `MagpieRemote.ipa`, and generates a SHA256 checksum.
-- **Artifacts** — Action artifacts are retained for 14 days; tag and Release runs attach them to the corresponding GitHub Release.
+- **Release** — every successful run creates or updates a GitHub Release with commit-based release notes plus `MagpieRemote.ipa` and its SHA256 checksum.
 
 ## 🤝 Contributing
 

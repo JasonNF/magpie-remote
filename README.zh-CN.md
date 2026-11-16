@@ -110,9 +110,10 @@ xcodebuild -project MagpieRemote.xcodeproj \
 
 CI/CD 配置位于 [`.github/workflows/release.yml`](.github/workflows/release.yml)：
 
-- **触发** — 推送 `main`、推送 `v*` 标签、发布 Release，或手动运行 workflow。
+- **触发** — 每次推送 `main`、推送 `v*` 标签、发布 Release，或手动运行 workflow。
+- **版本** — 推送 `main` 时基于最新 `v*` 标签自动递增补丁号；标签推送或手动运行可指定精确版本。
 - **构建** — 在 `macos-26` 运行器上使用 Xcode 26 完成未签名 Archive，导出 `MagpieRemote.ipa` 并生成 SHA256 校验和。
-- **产物** — Action 归档保留 14 天；标签与 Release 触发时会自动附加到对应 GitHub Release。
+- **发布** — 每次成功运行都会创建或更新 GitHub Release，附上按提交生成的更新说明、`MagpieRemote.ipa` 与 SHA256 校验和。
 
 ## 🤝 参与开发
 

@@ -11,23 +11,29 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: '发布版本号（如 1.0.0，留空则使用 project.yml 中的版本）'
+        description: 'Release version (e.g. 1.0.0, leave empty for the next patch)'
         required: false
         default: ''
 
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-ipa:
-    name: Build & Export iOS IPA
-    # iOS 26 SDK（Liquid Glass / GlassEffect / tabBarMinimizeBehavior）需要 Xcode 26+，
-    # macos-15 自带 Xcode 16.4（iOS 18.5 SDK），必然编译失败。
+    name: Build, Package & Release IPA
+    # iOS 26 SDK（Liquid Glass / GlassEffect / tabBarMinimizeBehavior）需要 Xcode 26+。
     runs-on: macos-26
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Select Latest Xcode 26
         run: |
@@ -52,13 +58,31 @@ jobs:
       - name: Resolve Version
         id: version
         run: |
+          set -euo pipefail
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
-          else
+          elif [[ -n "${{ inputs.version_name }}" ]]; then
             VERSION="${{ inputs.version_name }}"
+          else
+            # Main pushes publish a new patch release based on the latest v* tag.
+            LATEST_TAG="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+            if [[ -n "$LATEST_TAG" ]]; then
+              BASE="${LATEST_TAG#v}"
+              if [[ "$BASE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+                VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+              else
+                VERSION="$BASE"
+              fi
+            else
+              VERSION="$(awk '/MARKETING_VERSION:/ {gsub(/"/, "", $2); print $2; exit}' project.yml)"
+            fi
+          fi
+          if [[ -z "$VERSION" ]]; then
+            echo "Could not resolve a release version" >&2
+            exit 1
           fi
           echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version: ${VERSION:-<project.yml default>}"
+          echo "Resolved version: ${VERSION}"
 
       - name: Build & Archive (Unsigned for Sideloading)
         env:
@@ -66,10 +90,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/archive
-          VERSION_ARG=""
-          if [ -n "$VERSION_OVERRIDE" ]; then
-            VERSION_ARG="MARKETING_VERSION=$VERSION_OVERRIDE"
-          fi
           xcodebuild archive \
             -project MagpieRemote.xcodeproj \
             -scheme MagpieRemote \
@@ -79,7 +99,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            ${VERSION_ARG:+"$VERSION_ARG"}
+            MARKETING_VERSION="$VERSION_OVERRIDE" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
       - name: Package IPA
         run: |
@@ -94,6 +115,29 @@ jobs:
           ls -lh MagpieRemote.ipa MagpieRemote.ipa.sha256
           cat MagpieRemote.ipa.sha256
 
+      - name: Generate Release Notes
+        run: |
+          set -euo pipefail
+          PREV_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
+          {
+            echo "Native iOS / iPadOS client for [yetone/magpie](https://github.com/yetone/magpie)."
+            echo
+            echo "## What's Changed"
+            echo
+            if [[ -n "$PREV_TAG" ]]; then
+              git log --no-merges --pretty=format:'- %s (`%h`)' "${PREV_TAG}..HEAD"
+              echo
+              echo
+              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ steps.version.outputs.value }}"
+            else
+              git log --no-merges --pretty=format:'- %s (`%h`)' HEAD
+            fi
+            echo
+            echo
+            echo "**Install**: download \`MagpieRemote.ipa\` and sideload with TrollStore, AltStore, or SideStore."
+          } > release-notes.md
+          cat release-notes.md
+
       - name: Upload IPA Artifact (Action Run)
         uses: actions/upload-artifact@v4
         with:
@@ -103,13 +147,16 @@ jobs:
             MagpieRemote.ipa.sha256
           retention-days: 14
 
-      - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.value }}
+          name: Magpie Remote ${{ steps.version.outputs.value }}
+          body_path: release-notes.md
+          target_commitish: ${{ github.sha }}
           files: |
             MagpieRemote.ipa
             MagpieRemote.ipa.sha256
-          generate_release_notes: true
           draft: false
           prerelease: false
+          make_latest: true
