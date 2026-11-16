@@ -1,7 +1,10 @@
 # Magpie Remote (iOS / iPadOS)
 
 <p align="center">
-  <img src="MagpieRemote/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" alt="Magpie Remote Logo" width="108" height="108" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/app-icon-dark.png">
+    <img src="MagpieRemote/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" alt="Magpie Remote Logo" width="108" height="108" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
+  </picture>
 </p>
 
 <p align="center">
