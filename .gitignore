@@ -1,7 +1,9 @@
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
 
-# Xcode
+# Xcode & Build Artifacts
 build/
 DerivedData/
 *.xcodeproj
@@ -9,13 +11,19 @@ DerivedData/
 !project.yml
 xcuserdata/
 *.xcuserstate
+*.xcresult
+*.ipa
+*.xcarchive
+*.dSYM.zip
 
 # Swift Package Manager
 .swiftpm/
 .build/
 
-# 本地开发凭据与联调数据（含密钥，绝不提交）
+# 本地开发凭据、日志与联调数据（含密钥，绝不提交）
 .dev/
+*.log
+*.tmp
 
 # MCP & Agent caches
 .playwright-mcp/
