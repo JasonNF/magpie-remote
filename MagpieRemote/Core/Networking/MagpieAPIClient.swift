@@ -144,6 +144,12 @@ final class MagpieAPIClient: Sendable {
             request.setValue(endpoint.contentType, forHTTPHeaderField: "Content-Type")
         }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let cookies = HTTPCookieStorage.shared.cookies(for: url), !cookies.isEmpty {
+            let headerDict = HTTPCookie.requestHeaderFields(with: cookies)
+            for (field, value) in headerDict {
+                request.setValue(value, forHTTPHeaderField: field)
+            }
+        }
         return request
     }
 
@@ -158,11 +164,15 @@ final class MagpieAPIClient: Sendable {
     }
 
     private static func saveCookies(from response: HTTPURLResponse, for url: URL) {
-        if let headerFields = response.allHeaderFields as? [String: String] {
-            let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: url)
-            for cookie in cookies {
-                HTTPCookieStorage.shared.setCookie(cookie)
+        var headerFields: [String: String] = [:]
+        for (k, v) in response.allHeaderFields {
+            if let key = k as? String, let val = v as? String {
+                headerFields[key] = val
             }
+        }
+        let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: url)
+        for cookie in cookies {
+            HTTPCookieStorage.shared.setCookie(cookie)
         }
     }
 

@@ -22,9 +22,23 @@ struct Endpoint: Sendable {
         body: Data? = nil,
         contentType: String = "application/json"
     ) {
-        self.path = path
+        var cleanPath = path
+        var combinedQuery = query
+
+        // 自动解析 path 中可能包含的 query 字符串（如 /api/gateway/trace?after=0）
+        if let questionIndex = path.firstIndex(of: "?") {
+            cleanPath = String(path[..<questionIndex])
+            let queryString = String(path[path.index(after: questionIndex)...])
+            if let dummyURL = URL(string: "http://localhost?" + queryString),
+               let comps = URLComponents(url: dummyURL, resolvingAgainstBaseURL: false),
+               let parsedItems = comps.queryItems {
+                combinedQuery.append(contentsOf: parsedItems)
+            }
+        }
+
+        self.path = cleanPath
         self.method = method
-        self.query = query
+        self.query = combinedQuery
         self.body = body
         self.contentType = contentType
     }

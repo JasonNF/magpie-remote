@@ -17,11 +17,19 @@ struct GroupsView: View {
     @Namespace private var zoomNamespace
 
     enum FilterTab: String, CaseIterable, Identifiable {
-        case all = "全部"
-        case auto = "自动发现组"
-        case custom = "自定义组"
+        case all
+        case auto
+        case custom
 
         var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .all: return String(localized: "全部")
+            case .auto: return String(localized: "自动发现组")
+            case .custom: return String(localized: "自定义组")
+            }
+        }
     }
 
     private var filteredGroups: [GroupDTO] {
@@ -56,7 +64,7 @@ struct GroupsView: View {
                     // 分类 Segment
                     Picker(String(localized: "类别"), selection: $filterTab) {
                         ForEach(FilterTab.allCases) { tab in
-                            Text(tab.rawValue).tag(tab)
+                            Text(tab.title).tag(tab)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -112,13 +120,15 @@ struct GroupsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .padding(.bottom, 96)
             }
             .magpiePageBackground()
             .searchable(text: $searchText, prompt: String(localized: "搜索路由组名称或标识…"))
             .navigationTitle(String(localized: "Routing Groups"))
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationDestination(for: String.self) { ref in
-                GroupDetailView(groupRef: ref)
+                GroupDetailView(groupRef: ref, viewModel: viewModel)
+                    .environment(viewModel)
                     .navigationTransition(.zoom(sourceID: ref, in: zoomNamespace))
             }
             .overlay {
@@ -754,9 +764,7 @@ private struct GroupCard: View {
 
                 if group.ready == true {
                     HStack(spacing: 4) {
-                        Circle()
-                            .fill(MagpieTheme.green)
-                            .frame(width: 6, height: 6)
+                        MagpiePulseDot(color: MagpieTheme.green)
                         Text(String(localized: "就绪"))
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(MagpieTheme.green)
@@ -799,7 +807,7 @@ private struct GroupCard: View {
                 }
             }
         }
-        .magpieCard()
+        .magpieLiquidCard(padding: 14, cornerRadius: 20)
     }
 
     /// 组成员的前几个品牌图标，直观显示一个组由谁支撑。

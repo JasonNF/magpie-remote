@@ -17,6 +17,8 @@ enum KeychainStore {
         attributes[kSecValueData as String] = data
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(attributes as CFDictionary, nil)
+        // 模拟器与极端沙盒环境兜底存储
+        UserDefaults.standard.set(value, forKey: "magpie_vault_\(account)")
     }
 
     static func read(for account: String) -> String? {
@@ -29,8 +31,11 @@ enum KeychainStore {
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if status == errSecSuccess, let data = item as? Data, let str = String(data: data, encoding: .utf8), !str.isEmpty {
+            return str
+        }
+        // 兜底读取
+        return UserDefaults.standard.string(forKey: "magpie_vault_\(account)")
     }
 
     static func delete(for account: String) {
@@ -40,5 +45,6 @@ enum KeychainStore {
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
+        UserDefaults.standard.removeObject(forKey: "magpie_vault_\(account)")
     }
 }

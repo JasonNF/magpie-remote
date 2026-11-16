@@ -61,13 +61,16 @@ struct UsageExportResultDTO: Codable, Sendable {
 }
 
 /// 配额项详情
-struct QuotaItemDTO: Codable, Sendable, Identifiable, Hashable {    var provider: String
+struct QuotaItemDTO: Codable, Sendable, Identifiable, Hashable {
+    var provider: String
     var name: String
+    var user: String?
     var icon: String?
     var balance: String?
     var windows: [QuotaWindowDTO]?
 
-    var id: String { "\(provider)-\(name)" }
+    /// 同一 Provider 可能有多个账号，账号名必须参与标识，否则 ForEach 会收到重复 ID。
+    var id: String { "\(provider)-\(name)-\(user ?? "")" }
 
     struct QuotaWindowDTO: Codable, Sendable, Identifiable, Hashable {
         var name: String

@@ -92,6 +92,7 @@ struct SettingsView: View {
                         return result
                     }
                 )
+                .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showingDavsync) {
                 DavsyncSheet(
@@ -116,6 +117,7 @@ struct SettingsView: View {
                         return result != nil
                     }
                 )
+                .presentationDetents([.medium, .large])
             }
             .alert(
                 String(localized: "备份已导出"),
@@ -137,33 +139,38 @@ struct SettingsView: View {
 
     // MARK: - 服务器
     private var serverHero: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 14) {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [MagpieTheme.accent, Color(hex: "8b5cf6").opacity(0.75)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 46, height: 46)
-                        .shadow(color: MagpieTheme.accent.opacity(0.32), radius: 12, x: 0, y: 6)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(MagpieTheme.accent.gradient)
+                        .frame(width: 42, height: 42)
                     Image(systemName: "bird.fill")
                         .font(.system(size: 19, weight: .semibold))
                         .foregroundStyle(.white)
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(app.activeName.isEmpty ? String(localized: "服务器") : app.activeName)
                             .font(.headline)
                             .foregroundStyle(MagpieTheme.textPrimary)
-                        MagpieStatusChip(
-                            text: app.isConnected ? String(localized: "已连接") : String(localized: "离线"),
-                            color: app.isConnected ? MagpieTheme.green : MagpieTheme.amber
-                        )
+                        if app.isConnected {
+                            HStack(spacing: 4) {
+                                MagpiePulseDot(color: MagpieTheme.green)
+                                Text(String(localized: "已连接"))
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3.5)
+                            .background(MagpieTheme.greenSoft, in: Capsule())
+                            .foregroundStyle(MagpieTheme.green)
+                        } else {
+                            MagpieStatusChip(
+                                text: String(localized: "离线"),
+                                color: MagpieTheme.amber
+                            )
+                        }
                     }
 
                     if let url = app.activeURL {
@@ -185,7 +192,7 @@ struct SettingsView: View {
                 serverStat(String(localized: "网关"), settings?.gateway ?? "—")
             }
         }
-        .magpieCard()
+        .magpieLiquidCard(padding: 16, cornerRadius: 20)
     }
 
     private func serverStat(_ title: String, _ value: String) -> some View {
@@ -780,9 +787,15 @@ struct SettingsView: View {
 
             Spacer(minLength: 8)
 
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .tint(MagpieTheme.green)
+            Toggle("", isOn: Binding(
+                get: { isOn.wrappedValue },
+                set: { value in
+                    MagpieHaptics.light()
+                    isOn.wrappedValue = value
+                }
+            ))
+            .labelsHidden()
+            .tint(MagpieTheme.green)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

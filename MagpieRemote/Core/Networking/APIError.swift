@@ -48,17 +48,17 @@ enum APIError: LocalizedError, Equatable {
         case .typeMismatch(let type, let context):
             let path = context.codingPath.map(\.stringValue).joined(separator: ".")
             let key = path.isEmpty ? "<root>" : path
-            return .decoding("字段 \(key) 类型不匹配（期望 \(type)）：\(context.debugDescription)")
+            return .decoding(String(localized: "字段 \(key) 类型不匹配（期望 \(String(describing: type))）：\(context.debugDescription)"))
         case .valueNotFound(let type, let context):
             let path = context.codingPath.map(\.stringValue).joined(separator: ".")
             let key = path.isEmpty ? "<root>" : path
-            return .decoding("字段 \(key) 缺少值（期望 \(type)）：\(context.debugDescription)")
+            return .decoding(String(localized: "字段 \(key) 缺少值（期望 \(String(describing: type))）：\(context.debugDescription)"))
         case .keyNotFound(let key, let context):
             let path = (context.codingPath + [key]).map(\.stringValue).joined(separator: ".")
-            return .decoding("缺少必要字段 \(path)：\(context.debugDescription)")
+            return .decoding(String(localized: "缺少必要字段 \(path)：\(context.debugDescription)"))
         case .dataCorrupted(let context):
             let path = context.codingPath.map(\.stringValue).joined(separator: ".")
-            return .decoding("数据损坏 \(path.isEmpty ? "" : "(\(path)): ")\(context.debugDescription)")
+            return .decoding(String(localized: "数据损坏 \(path.isEmpty ? "" : "(\(path)): ")\(context.debugDescription)"))
         @unknown default:
             return .decoding(error.localizedDescription)
         }

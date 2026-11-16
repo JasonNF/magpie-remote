@@ -6,6 +6,8 @@ import UIKit
 /// 统计、账本、热力图、上下文全部来自 `/api/usage*`、`/api/sessions`、`/api/context`。
 struct UsageView: View {
     @Environment(AppModel.self) private var app
+    @AppStorage("magpie_mask_accounts") private var maskAccounts = false
+
     @State private var viewModel = UsageViewModel()
     @State private var isCheckingIn = false
     @State private var overviewSort = "tokens"
@@ -15,12 +17,19 @@ struct UsageView: View {
     @State private var exportPath: String?
     @State private var actionError: String?
 
+    // 各种折叠状态
+    @State private var isAgentsExpanded = true
+    @State private var isModelsExpanded = true
+    @State private var isAccountsExpanded = true
+    @State private var isKeysExpanded = true
+    @State private var isHeatmapExpanded = true
+
     private let periods: [(String, String)] = [
-        ("today", "今天"),
-        ("last:24h", "24 小时"),
-        ("7d", "7 天"),
-        ("30d", "30 天"),
-        ("all", "全部")
+        ("today", String(localized: "今天")),
+        ("last:24h", String(localized: "24 小时")),
+        ("7d", String(localized: "7 天")),
+        ("30d", String(localized: "30 天")),
+        ("all", String(localized: "全部"))
     ]
 
     private var loadKey: String {
@@ -30,9 +39,9 @@ struct UsageView: View {
     var body: some View {
         MagpieNavigationContainer {
             ScrollView {
-                VStack(spacing: 16) {
-                    header
-                    tabBar
+                VStack(spacing: 12) {
+                    // 1. 顶部整合工具栏 (4 大视图 Tab 切换 + 时间周期与预估费用徽标)
+                    usageNavHeader
 
                     if let error = viewModel.errorMessage {
                         errorBanner(error)
@@ -50,13 +59,42 @@ struct UsageView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+                .padding(.vertical, 10)
+                .padding(.bottom, 96)
             }
             .magpiePageBackground()
             .navigationTitle(String(localized: "Usage"))
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                // 1. 账号隐私打码开关 (与 Routing 统一)
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        maskAccounts.toggle()
+                        MagpieHaptics.light()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: maskAccounts ? "eye.slash.fill" : "eye")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(maskAccounts ? String(localized: "已打码") : String(localized: "隐藏账号"))
+                                .font(.system(size: 11.5, weight: .medium))
+                        }
+                        .foregroundStyle(maskAccounts ? MagpieTheme.accent : MagpieTheme.textSecondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(maskAccounts ? MagpieTheme.accent.opacity(0.14) : MagpieTheme.card)
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(maskAccounts ? MagpieTheme.accent.opacity(0.3) : MagpieTheme.borderSubtle, lineWidth: 0.8)
+                        )
+                    }
+                    .accessibilityLabel(String(localized: "截图脱敏模式"))
+                }
+
+                // 2. 更多操作菜单
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
@@ -153,7 +191,7 @@ struct UsageView: View {
                 }
             }
             .sheet(item: $selectedRequest) { row in
-                UsageRequestDetailSheet(row: row)
+                UsageRequestDetailSheet(row: row, isMasked: maskAccounts)
             }
         }
     }
@@ -194,137 +232,123 @@ struct UsageView: View {
         }
     }
 
-    // MARK: - 头部
-    private var header: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(String(localized: "用量与配额"))
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .foregroundStyle(MagpieTheme.textPrimary)
-                    Text(viewModel.periodTitle + String(localized: " · 网关调用"))
-                        .font(.caption)
-                        .foregroundStyle(MagpieTheme.textMuted)
-                }
-
-                Spacer()
-
-                if let usage = viewModel.usage {
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(usage.formattedCost)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundStyle(MagpieTheme.green)
-                        Text(String(localized: "估算费用"))
-                            .font(.caption2)
-                            .foregroundStyle(MagpieTheme.textMuted)
-                    }
-                }
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
-                    ForEach(periods, id: \.0) { item in
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                                viewModel.period = item.0
-                            }
-                            MagpieHaptics.light()
-                        } label: {
-                            Text(item.1)
-                                .font(.system(size: 12, weight: .semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background {
-                                    if viewModel.period == item.0 {
-                                        LinearGradient(
-                                            colors: [MagpieTheme.accent, MagpieTheme.accent.opacity(0.72)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    } else {
-                                        MagpieTheme.card.opacity(0.65)
-                                    }
-                                }
-                                .foregroundStyle(viewModel.period == item.0 ? .white : MagpieTheme.textSecondary)
-                                .clipShape(Capsule())
-                                .overlay(
-                                    Capsule().stroke(
-                                        viewModel.period == item.0
-                                            ? Color.white.opacity(0.2)
-                                            : MagpieTheme.borderSubtle,
-                                        lineWidth: 0.8
-                                    )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .scrollClipDisabled()
-        }
-        .magpieCard()
-    }
-
-    private var tabBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+    // MARK: - 整合顶部导航与工具栏 (Usage Nav Header)
+    private var usageNavHeader: some View {
+        VStack(spacing: 8) {
+            // 行 1: 4 大视图 Tab 切换条 (总览 / 请求 / 会话 / 上下文)
+            HStack(spacing: 4) {
                 ForEach(UsageViewModel.UsageTab.allCases) { item in
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                             viewModel.tab = item
                         }
                         MagpieHaptics.light()
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 4) {
                             Image(systemName: item.icon)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 10, weight: .semibold))
                             Text(item.title)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 11.5, weight: .semibold))
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background {
-                            if viewModel.tab == item {
-                                LinearGradient(
-                                    colors: [MagpieTheme.accent, MagpieTheme.accent.opacity(0.72)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            } else {
-                                MagpieTheme.card.opacity(0.6)
-                            }
-                        }
-                        .foregroundStyle(viewModel.tab == item ? .white : MagpieTheme.textSecondary)
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule().stroke(
-                                viewModel.tab == item
-                                    ? Color.white.opacity(0.2)
-                                    : MagpieTheme.borderSubtle,
-                                lineWidth: 0.8
-                            )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(viewModel.tab == item ? MagpieTheme.card : Color.clear)
                         )
+                        .foregroundStyle(viewModel.tab == item ? MagpieTheme.textPrimary : MagpieTheme.textMuted)
+                        .shadow(color: viewModel.tab == item ? Color.black.opacity(0.06) : Color.clear, radius: 3, x: 0, y: 1.5)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .padding(2.5)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(MagpieTheme.pill)
+            )
+
+            // 行 2: 时间周期选择胶囊 + 预估费用微徽标与单点刷新
+            HStack(spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(periods, id: \.0) { item in
+                            Button {
+                                viewModel.period = item.0
+                                MagpieHaptics.light()
+                            } label: {
+                                Text(item.1)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4.5)
+                                    .background(viewModel.period == item.0 ? MagpieTheme.accent : MagpieTheme.pill, in: Capsule())
+                                    .foregroundStyle(viewModel.period == item.0 ? .white : MagpieTheme.textSecondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .scrollClipDisabled()
+
+                Spacer(minLength: 4)
+
+                // 预估费用微徽标与刷新按钮
+                HStack(spacing: 4) {
+                    if let usage = viewModel.usage {
+                        HStack(spacing: 2) {
+                            Text("≈")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(MagpieTheme.green)
+                            Text(usage.formattedCost)
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(MagpieTheme.green)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3.5)
+                        .background(MagpieTheme.greenSoft, in: Capsule())
+                    }
+
+                    Button {
+                        if let client = app.client {
+                            Task { await viewModel.reloadForTab(client: client) }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                            .padding(5)
+                            .background(MagpieTheme.pill, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isLoading)
+                }
+            }
         }
-        .scrollClipDisabled()
     }
 
-    // MARK: - 总览
+    // MARK: - 总览 (Overview)
     @ViewBuilder
     private var overviewSection: some View {
         if let usage = viewModel.usage {
+            // 1. 订阅配额卡片优先展示 (Web Allowances 官方最前列！)
+            if !viewModel.quotas.isEmpty {
+                quotasSection
+            }
+
+            // 2. 4大核心指标看板
             metricsGrid(usage)
+
+            // 3. Token 构成与分布图表
             tokenChartCard(usage)
 
+            // 4. 多维折叠明细列表 (Agents, Models, Accounts, Gateway Keys)
             if let groups = usage.agents, !groups.isEmpty {
                 groupCard(
                     String(localized: "Agents"),
                     icon: "terminal.fill",
                     tint: MagpieTheme.accent,
-                    groups: groups
+                    groups: groups,
+                    isExpanded: $isAgentsExpanded
                 )
             }
             if let groups = usage.models, !groups.isEmpty {
@@ -332,7 +356,8 @@ struct UsageView: View {
                     String(localized: "Models"),
                     icon: "cpu.fill",
                     tint: MagpieTheme.purple,
-                    groups: groups
+                    groups: groups,
+                    isExpanded: $isModelsExpanded
                 )
             }
             if let groups = usage.accounts, !groups.isEmpty {
@@ -340,7 +365,8 @@ struct UsageView: View {
                     String(localized: "账号"),
                     icon: "person.crop.circle.fill",
                     tint: MagpieTheme.cyan,
-                    groups: groups
+                    groups: groups,
+                    isExpanded: $isAccountsExpanded
                 )
             }
             if let groups = usage.callerKeys, !groups.isEmpty {
@@ -348,127 +374,304 @@ struct UsageView: View {
                     String(localized: "Gateway Keys"),
                     icon: "key.fill",
                     tint: MagpieTheme.amber,
-                    groups: groups
+                    groups: groups,
+                    isExpanded: $isKeysExpanded
                 )
-            }
-
-            checkinCard
-
-            if !viewModel.quotas.isEmpty {
-                quotasSection
             }
         } else if viewModel.isLoading {
             ProgressView().padding(.vertical, 40)
         } else {
             emptyState(
                 icon: "chart.bar.xaxis",
-                title: String(localized: "还没有用量记录"),
-                subtitle: String(localized: "当 Agent 通过网关发起请求后，这里会显示费用、Token 与配额。")
+                title: String(localized: "暂无用量统计"),
+                subtitle: String(localized: "发起几次 Agent 调用后，用量统计将在此实时更新。")
             )
         }
     }
 
-    private func metricsGrid(_ usage: UsageDTO) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            MagpieSectionLabel(title: viewModel.periodTitle + String(localized: " 总览"))
+    // MARK: - 配额与余量卡片 (Web 1:1 Allowances / Quotas)
+    private var quotasSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                MagpieSectionLabel(title: String(localized: "订阅额度与余量"), detail: String(localized: "\(viewModel.quotas.count) 个账户"))
+                Spacer()
+                if viewModel.isRefreshingQuota {
+                    ProgressView().controlSize(.small)
+                }
+            }
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            VStack(spacing: 8) {
+                ForEach(Array(viewModel.quotas.enumerated()), id: \.offset) { _, quota in
+                    quotaCard(quota)
+                }
+            }
+        }
+    }
+
+    private func quotaSubtitle(_ quota: QuotaItemDTO) -> String {
+        guard let user = quota.user, !user.isEmpty else { return quota.provider }
+        return "\(quota.provider) · \(RoutingFormat.maskString(user, isMasked: maskAccounts))"
+    }
+
+    private func quotaCard(_ quota: QuotaItemDTO) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                MagpieIconView(icon: quota.icon ?? quota.provider, name: quota.name, size: 24, cornerRadius: 6)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(RoutingFormat.maskString(quota.name, isMasked: maskAccounts))
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(MagpieTheme.textPrimary)
+                        .lineLimit(1)
+
+                    Text(quotaSubtitle(quota))
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                }
+
+                Spacer(minLength: 4)
+
+                // 快捷刷新单项配额
+                Button {
+                    if let client = app.client {
+                        Task { await viewModel.refreshQuota(client: client, provider: quota.provider) }
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let balance = quota.balance, !balance.isEmpty {
+                HStack(spacing: 3) {
+                    Text(String(localized: "余额:"))
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                    Text(balance)
+                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(MagpieTheme.green)
+                }
+            }
+
+            if let windows = quota.windows, !windows.isEmpty {
+                VStack(spacing: 5) {
+                    ForEach(Array(windows.enumerated()), id: \.offset) { _, win in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(win.name)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(MagpieTheme.textSecondary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(String(format: "%.0f%%", win.percentUsed))
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(win.percentUsed > 80 ? MagpieTheme.amber : MagpieTheme.accent)
+                            }
+
+                            // 进度槽
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(MagpieTheme.pill)
+                                        .frame(height: 3.5)
+
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(win.percentUsed > 80 ? MagpieTheme.amber.gradient : MagpieTheme.accent.gradient)
+                                        .frame(width: max(geo.size.width * CGFloat(min(win.percentUsed / 100.0, 1.0)), 2), height: 3.5)
+                                }
+                            }
+                            .frame(height: 3.5)
+
+                            if let reset = win.resetsAt, !reset.isEmpty {
+                                Text("重置: \(reset)")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(MagpieTheme.textMuted)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MagpieTheme.card)
+        .magpieLiquidSurface(cornerRadius: 14)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(MagpieTheme.borderSubtle, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - 4大核心指标看板 (Metrics Grid)
+    private func metricsGrid(_ usage: UsageDTO) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
                 MetricCard(
-                    title: String(localized: "预估花费"),
-                    value: usage.formattedCost,
-                    icon: "dollarsign.circle.fill",
-                    color: MagpieTheme.green
-                )
-                MetricCard(
-                    title: String(localized: "调用次数"),
-                    value: usage.formattedCalls,
-                    icon: "arrow.up.arrow.down.circle.fill",
+                    title: String(localized: "Tokens 总计"),
+                    value: UsageDTO.formatTokens(usage.totalTokens),
+                    sub: "\(UsageDTO.formatTokens(usage.input ?? 0)) in · \(UsageDTO.formatTokens(usage.output ?? 0)) out",
+                    icon: "number",
                     color: MagpieTheme.accent
                 )
                 MetricCard(
-                    title: String(localized: "输入 Tokens"),
-                    value: UsageDTO.formatTokens(usage.input ?? 0),
-                    icon: "arrow.up.circle.fill",
-                    color: MagpieTheme.amber
+                    title: String(localized: "预估费用"),
+                    value: usage.formattedCost,
+                    sub: usage.unpriced == nil ? nil : String(localized: "\(usage.unpriced!) 未定价调用"),
+                    icon: "dollarsign.circle.fill",
+                    color: MagpieTheme.green
                 )
+            }
+
+            HStack(spacing: 8) {
                 MetricCard(
-                    title: String(localized: "输出 Tokens"),
-                    value: UsageDTO.formatTokens(usage.output ?? 0),
-                    icon: "arrow.down.circle.fill",
-                    color: MagpieTheme.purple
+                    title: String(localized: "调用次数"),
+                    value: usage.formattedCalls,
+                    sub: (usage.errors ?? 0) > 0 ? String(localized: "\(usage.errors!) 报错 · \(usage.retried ?? 0) 重试") : String(localized: "全部成功"),
+                    icon: "arrow.triangle.swap",
+                    color: (usage.errors ?? 0) > 0 ? MagpieTheme.red : MagpieTheme.purple
+                )
+
+                let cacheSum = (usage.cache_read ?? 0) + (usage.cache_write ?? 0)
+                MetricCard(
+                    title: String(localized: "Prompt 缓存"),
+                    value: UsageDTO.formatTokens(cacheSum),
+                    sub: String(localized: "读取 \(UsageDTO.formatTokens(usage.cache_read ?? 0))"),
+                    icon: "bolt.badge.clock.fill",
+                    color: MagpieTheme.cyan
                 )
             }
         }
     }
 
+    // MARK: - 分类排行榜折叠面板
     private func groupCard(
         _ title: String,
         icon: String,
         tint: Color,
-        groups: [UsageGroupDTO]
+        groups: [UsageGroupDTO],
+        isExpanded: Binding<Bool>
     ) -> some View {
         let sorted = sortedGroups(groups)
-        return VStack(alignment: .leading, spacing: 9) {
+        let maxTokens = max(sorted.first?.totalTokens ?? 1, 1)
+
+        return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                MagpieSectionLabel(title: title, detail: "\(groups.count)")
-                Spacer()
-                Menu {
-                    Button(String(localized: "按 Tokens")) { overviewSort = "tokens" }
-                    Button(String(localized: "按费用")) { overviewSort = "cost" }
-                    Button(String(localized: "按调用")) { overviewSort = "calls" }
-                    Button(String(localized: "按名称")) { overviewSort = "name" }
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        isExpanded.wrappedValue.toggle()
+                    }
                 } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.up.arrow.down")
-                        Text(sortTitle)
+                    HStack(spacing: 6) {
+                        Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(MagpieTheme.textMuted)
+
+                        Image(systemName: icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(tint)
+
+                        Text(title)
+                            .font(.system(size: 13.5, weight: .bold))
+                            .foregroundStyle(MagpieTheme.textPrimary)
+
+                        Text("(\(groups.count))")
+                            .font(.caption2)
+                            .foregroundStyle(MagpieTheme.textMuted)
                     }
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(MagpieTheme.textMuted)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                if isExpanded.wrappedValue {
+                    Menu {
+                        Picker(String(localized: "排序"), selection: $overviewSort) {
+                            Text(String(localized: "按 Tokens")).tag("tokens")
+                            Text(String(localized: "按费用")).tag("cost")
+                            Text(String(localized: "按调用数")).tag("calls")
+                            Text(String(localized: "按名称")).tag("name")
+                        }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text(sortTitle)
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(MagpieTheme.pill, in: Capsule())
+                    }
                 }
             }
 
-            VStack(spacing: 0) {
-                ForEach(Array(sorted.prefix(10).enumerated()), id: \.offset) { item in
-                    let index = item.offset
-                    let group = item.element
-                    HStack(spacing: 10) {
-                        MagpieIconView(icon: group.icon ?? group.provider, name: group.displayName, size: 26, cornerRadius: 6)
+            if isExpanded.wrappedValue {
+                VStack(spacing: 0) {
+                    ForEach(Array(sorted.prefix(10).enumerated()), id: \.offset) { item in
+                        let index = item.offset
+                        let group = item.element
+                        let ratio = min(max(Double(group.totalTokens) / Double(maxTokens), 0.05), 1.0)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(group.displayName)
-                                .font(.system(size: 12.5, weight: .medium, design: .monospaced))
-                                .foregroundStyle(MagpieTheme.textPrimary)
-                                .lineLimit(1)
-                            if let sub = group.sub, !sub.isEmpty {
-                                Text(sub)
-                                    .font(.caption2)
-                                    .foregroundStyle(MagpieTheme.textMuted)
-                                    .lineLimit(1)
+                        VStack(spacing: 6) {
+                            HStack(spacing: 10) {
+                                MagpieIconView(icon: group.icon ?? group.provider, name: group.displayName, size: 28, cornerRadius: 7)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(RoutingFormat.maskString(group.displayName, isMasked: maskAccounts))
+                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(MagpieTheme.textPrimary)
+                                        .lineLimit(1)
+                                    if let sub = group.sub, !sub.isEmpty {
+                                        Text(RoutingFormat.maskString(sub, isMasked: maskAccounts))
+                                            .font(.caption2)
+                                            .foregroundStyle(MagpieTheme.textMuted)
+                                            .lineLimit(1)
+                                    }
+                                }
+
+                                Spacer(minLength: 4)
+
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(UsageDTO.formatTokens(group.totalTokens))
+                                        .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(MagpieTheme.textPrimary)
+                                    Text("\(group.calls ?? 0) 次 · \(group.formattedCost)")
+                                        .font(.caption2)
+                                        .foregroundStyle(MagpieTheme.textMuted)
+                                }
                             }
+
+                            // 占比进度条 (Web 对齐)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(MagpieTheme.pill)
+                                        .frame(height: 3)
+
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(tint.gradient)
+                                        .frame(width: geo.size.width * ratio, height: 3)
+                                }
+                            }
+                            .frame(height: 3)
+                            .padding(.leading, 38)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
 
-                        Spacer(minLength: 4)
-
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(UsageDTO.formatTokens(group.totalTokens))
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(MagpieTheme.textPrimary)
-                            Text("\(group.calls ?? 0) · \(group.formattedCost)")
-                                .font(.caption2)
-                                .foregroundStyle(MagpieTheme.textMuted)
+                        if index < min(sorted.count, 10) - 1 {
+                            Divider()
+                                .background(MagpieTheme.borderSubtle)
+                                .padding(.leading, 48)
                         }
-                    }
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 9)
-
-                    if index < min(sorted.count, 10) - 1 {
-                        Divider()
-                            .background(MagpieTheme.borderSubtle)
-                            .padding(.leading, 49)
                     }
                 }
+                .magpieCard(padding: 0)
             }
-            .magpieCard(padding: 0)
         }
     }
 
@@ -498,7 +701,7 @@ struct UsageView: View {
 
     private func tokenChartCard(_ usage: UsageDTO) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            MagpieSectionLabel(title: String(localized: "Token 构成"))
+            MagpieSectionLabel(title: String(localized: "Token 构成分布"))
 
             VStack(alignment: .leading, spacing: 12) {
                 TokenDistributionChart(usage: usage)
@@ -532,19 +735,19 @@ struct UsageView: View {
         }
     }
 
-    // MARK: - 请求账本
+    // MARK: - 请求账本 (Requests / Ledger 官方核心对齐！)
     private var requestsSection: some View {
         VStack(spacing: 14) {
+            // 实时网络吞吐条
             if !viewModel.trafficText.isEmpty {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 10, weight: .semibold))
+                    MagpiePulseDot(color: MagpieTheme.green)
                     Text(viewModel.trafficText)
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                     Spacer()
-                    Text(String(localized: "实时"))
-                        .font(.system(size: 9, weight: .bold))
-                        .padding(.horizontal, 5)
+                    Text(String(localized: "实时流量"))
+                        .font(.system(size: 9.5, weight: .bold))
+                        .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(MagpieTheme.greenSoft)
                         .foregroundStyle(MagpieTheme.green)
@@ -555,15 +758,164 @@ struct UsageView: View {
                 .magpieCard(padding: 10)
             }
 
+            // 1. Web 1:1 对齐的核心 KPI 综合统计条 (renderLedgerDash)
+            ledgerKpiStrip
+
+            // 2. 筛选与搜索工具条 (Sess Tools)
             requestFilters
-            ledgerKPI
+
+            // 3. 53 周日历用量热力图 (可折叠)
             heatmapCard
+
+            // 4. 账本流水请求列表
             ledgerList
         }
     }
 
+    // MARK: - 1:1 Web 对齐的 KPI 统计面板 (renderLedgerDash)
+    private var ledgerKpiStrip: some View {
+        let calls = viewModel.ledgerTotalCalls
+        let errors = viewModel.ledgerErrorCalls
+        let retried = viewModel.ledgerRetriedCalls
+        let cost = viewModel.ledger?.cost ?? viewModel.usage?.cost
+        let cacheHit = viewModel.ledgerCacheHitRate
+
+        return VStack(spacing: 10) {
+            // 第一排：Tokens 与 请求数
+            HStack(spacing: 8) {
+                // Tokens 卡片
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "Tokens"))
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                    Text(UsageDTO.formatTokens(viewModel.ledgerTotalTokens))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .foregroundStyle(MagpieTheme.textPrimary)
+                    Text("\(UsageDTO.formatTokens(viewModel.ledgerInputTokens)) in · \(UsageDTO.formatTokens(viewModel.ledgerOutputTokens)) out")
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(MagpieTheme.card)
+                .magpieLiquidSurface(cornerRadius: 12)
+
+                // 请求数与成功率 (附带可点击过滤按钮)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(String(localized: "Requests"))
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                        Spacer()
+                        if let rate = viewModel.ledgerSuccessRate {
+                            Text(String(format: String(localized: "%.1f%% 成功"), rate * 100))
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundStyle(MagpieTheme.green)
+                        }
+                    }
+
+                    Text("\(calls)")
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .foregroundStyle(MagpieTheme.textPrimary)
+
+                    HStack(spacing: 5) {
+                        if errors > 0 {
+                            Button {
+                                viewModel.ledgerFailedOnly.toggle()
+                                if viewModel.ledgerFailedOnly { viewModel.ledgerRetriedOnly = false }
+                                applyFilters()
+                            } label: {
+                                Text("\(errors) 失败")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(viewModel.ledgerFailedOnly ? MagpieTheme.red : MagpieTheme.red.opacity(0.16))
+                                    .foregroundStyle(viewModel.ledgerFailedOnly ? .white : MagpieTheme.red)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text(String(localized: "无报错"))
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(MagpieTheme.green)
+                        }
+
+                        if retried > 0 {
+                            Button {
+                                viewModel.ledgerRetriedOnly.toggle()
+                                if viewModel.ledgerRetriedOnly { viewModel.ledgerFailedOnly = false }
+                                applyFilters()
+                            } label: {
+                                Text("\(retried) 重试")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(viewModel.ledgerRetriedOnly ? MagpieTheme.amber : MagpieTheme.amber.opacity(0.16))
+                                    .foregroundStyle(viewModel.ledgerRetriedOnly ? .white : MagpieTheme.amber)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(MagpieTheme.card)
+                .magpieLiquidSurface(cornerRadius: 12)
+            }
+
+            // 第二排：预估费用与缓存命中率
+            HStack(spacing: 8) {
+                // 预估花费
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "预估花费"))
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                    Text(cost != nil ? String(format: "$%.2f", cost!) : "—")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(MagpieTheme.green)
+                    Text(String(localized: "有效定价模型"))
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(MagpieTheme.card)
+                .magpieLiquidSurface(cornerRadius: 12)
+
+                // 缓存命中率 (带进度槽)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(String(localized: "缓存命中率"))
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                        Spacer()
+                        Text(cacheHit != nil ? String(format: "%.1f%%", cacheHit! * 100) : "—")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(MagpieTheme.cyan)
+                    }
+
+                    ProgressView(value: min(cacheHit ?? 0.0, 1.0), total: 1.0)
+                        .tint(MagpieTheme.cyan)
+                        .padding(.vertical, 2)
+
+                    Text(String(localized: "Prompt 缓存复用率"))
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(MagpieTheme.textMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(MagpieTheme.card)
+                .magpieLiquidSurface(cornerRadius: 12)
+            }
+        }
+    }
+
+    // MARK: - 筛选工具条
     private var requestFilters: some View {
         VStack(spacing: 9) {
+            // 搜索框
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12, weight: .semibold))
@@ -591,21 +943,47 @@ struct UsageView: View {
                     .stroke(MagpieTheme.borderSubtle, lineWidth: 0.8)
             )
 
+            // 快捷药丸筛选横轴
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7) {
+                    // 全部
                     filterChip(
-                        String(localized: "失败"),
+                        String(localized: "全部"),
+                        active: !viewModel.ledgerFailedOnly && !viewModel.ledgerRetriedOnly,
+                        tint: MagpieTheme.accent
+                    ) {
+                        viewModel.ledgerFailedOnly = false
+                        viewModel.ledgerRetriedOnly = false
+                        applyFilters()
+                    }
+
+                    // 仅失败
+                    filterChip(
+                        String(localized: "仅失败"),
                         active: viewModel.ledgerFailedOnly,
                         tint: MagpieTheme.red
                     ) {
                         viewModel.ledgerFailedOnly.toggle()
+                        if viewModel.ledgerFailedOnly { viewModel.ledgerRetriedOnly = false }
                         applyFilters()
                     }
 
+                    // 仅重试
+                    filterChip(
+                        String(localized: "仅重试"),
+                        active: viewModel.ledgerRetriedOnly,
+                        tint: MagpieTheme.amber
+                    ) {
+                        viewModel.ledgerRetriedOnly.toggle()
+                        if viewModel.ledgerRetriedOnly { viewModel.ledgerFailedOnly = false }
+                        applyFilters()
+                    }
+
+                    // 提供商菜单
                     Menu {
                         Button(String(localized: "全部提供方")) { viewModel.ledgerProvider = ""; applyFilters() }
                         ForEach(viewModel.ledgerProviders) { provider in
-                            Button(provider.displayName) {
+                            Button(RoutingFormat.maskString(provider.displayName, isMasked: maskAccounts)) {
                                 viewModel.ledgerProvider = provider.id
                                 applyFilters()
                             }
@@ -619,6 +997,7 @@ struct UsageView: View {
                         )
                     }
 
+                    // Agent 菜单
                     Menu {
                         Button(String(localized: "全部 Agent")) { viewModel.ledgerAgent = ""; applyFilters() }
                         ForEach(viewModel.ledgerAgents) { agent in
@@ -646,14 +1025,14 @@ struct UsageView: View {
     private func filterChip(_ title: String, active: Bool, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .padding(.horizontal, 10)
+                .font(.system(size: 11.5, weight: .semibold))
+                .padding(.horizontal, 11)
                 .padding(.vertical, 6)
-                .background(active ? tint.opacity(0.16) : MagpieTheme.pill)
+                .background(active ? tint.opacity(0.18) : MagpieTheme.pill)
                 .foregroundStyle(active ? tint : MagpieTheme.textSecondary)
                 .clipShape(Capsule())
                 .overlay(
-                    Capsule().stroke(active ? tint.opacity(0.25) : MagpieTheme.borderSubtle, lineWidth: 0.7)
+                    Capsule().stroke(active ? tint.opacity(0.35) : MagpieTheme.borderSubtle, lineWidth: 0.7)
                 )
         }
         .buttonStyle(.plain)
@@ -661,19 +1040,19 @@ struct UsageView: View {
 
     private func filterMenuLabel(_ title: String, active: Bool) -> some View {
         HStack(spacing: 3) {
-            Text(title)
+            Text(RoutingFormat.maskString(title, isMasked: maskAccounts))
                 .lineLimit(1)
             Image(systemName: "chevron.down")
                 .font(.system(size: 8, weight: .bold))
         }
-        .font(.system(size: 11, weight: .semibold))
-        .padding(.horizontal, 10)
+        .font(.system(size: 11.5, weight: .semibold))
+        .padding(.horizontal, 11)
         .padding(.vertical, 6)
         .background(active ? MagpieTheme.accentSoft : MagpieTheme.pill)
         .foregroundStyle(active ? MagpieTheme.accent : MagpieTheme.textSecondary)
         .clipShape(Capsule())
         .overlay(
-            Capsule().stroke(active ? MagpieTheme.accent.opacity(0.25) : MagpieTheme.borderSubtle, lineWidth: 0.7)
+            Capsule().stroke(active ? MagpieTheme.accent.opacity(0.35) : MagpieTheme.borderSubtle, lineWidth: 0.7)
         )
     }
 
@@ -685,46 +1064,29 @@ struct UsageView: View {
         }
     }
 
-    private var ledgerKPI: some View {
-        let ledger = viewModel.ledger
-        let calls = ledger?.calls ?? viewModel.usage?.calls ?? 0
-        let tokens = (ledger?.input ?? 0) + (ledger?.output ?? 0)
-        let cost = ledger?.cost ?? viewModel.usage?.cost
-        return HStack(spacing: 0) {
-            kpi(String(localized: "请求"), UsageDTO.formatTokens(calls), tint: MagpieTheme.accent)
-            kpiDivider
-            kpi(String(localized: "Tokens"), UsageDTO.formatTokens(tokens), tint: MagpieTheme.purple)
-            kpiDivider
-            kpi(String(localized: "费用"), cost.map { String(format: "$%.2f", $0) } ?? "—", tint: MagpieTheme.green)
-        }
-        .magpieCard(padding: 12)
-    }
-
-    private func kpi(_ title: String, _ value: String, tint: Color) -> some View {
-        VStack(spacing: 3) {
-            MagpieGradientNumber(text: value, tint: tint, size: 18)
-            Text(title)
-                .font(.system(size: 9.5))
-                .foregroundStyle(MagpieTheme.textMuted)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var kpiDivider: some View {
-        Rectangle()
-            .fill(MagpieTheme.borderSubtle)
-            .frame(width: 1, height: 24)
-    }
-
-    // MARK: - 热力图
+    // MARK: - 53 周日历用量热力图 (GitHub 风格)
     private var heatmapCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                MagpieSectionLabel(
-                    title: String(localized: "用量热力图"),
-                    detail: String(localized: "最近 53 周")
-                )
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        isHeatmapExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isHeatmapExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                        MagpieSectionLabel(
+                            title: String(localized: "用量热力图"),
+                            detail: String(localized: "最近 53 周")
+                        )
+                    }
+                }
+                .buttonStyle(.plain)
+
                 Spacer()
+
                 Picker("", selection: $heatMetric) {
                     Text(String(localized: "请求")).tag("calls")
                     Text(String(localized: "Tokens")).tag("tokens")
@@ -735,44 +1097,46 @@ struct UsageView: View {
                 .font(.caption2)
             }
 
-            if viewModel.heatmap == nil {
-                if viewModel.isHeatmapLoading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 16)
+            if isHeatmapExpanded {
+                if viewModel.heatmap == nil {
+                    if viewModel.isHeatmapLoading {
+                        ProgressView().frame(maxWidth: .infinity).padding(.vertical, 16)
+                    } else {
+                        Text(String(localized: "热力图需要先加载请求数据。"))
+                            .font(.caption2)
+                            .foregroundStyle(MagpieTheme.textMuted)
+                    }
                 } else {
-                    Text(String(localized: "热力图需要先加载请求数据。"))
-                        .font(.caption2)
-                        .foregroundStyle(MagpieTheme.textMuted)
-                }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 3) {
-                        ForEach(Array(heatWeeks.enumerated()), id: \.offset) { item in
-                            VStack(spacing: 3) {
-                                ForEach(item.element) { cell in
-                                    heatCell(cell)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 3) {
+                            ForEach(Array(heatWeeks.enumerated()), id: \.offset) { item in
+                                VStack(spacing: 3) {
+                                    ForEach(item.element) { cell in
+                                        heatCell(cell)
+                                    }
                                 }
                             }
                         }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
-                }
-                .scrollClipDisabled()
+                    .scrollClipDisabled()
 
-                HStack(spacing: 5) {
-                    Text(String(localized: "少"))
-                    ForEach([0.10, 0.3, 0.55, 0.8, 1.0], id: \.self) { level in
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(MagpieTheme.accent.opacity(level))
-                            .frame(width: 10, height: 10)
+                    HStack(spacing: 5) {
+                        Text(String(localized: "少"))
+                        ForEach([0.10, 0.3, 0.55, 0.8, 1.0], id: \.self) { level in
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(MagpieTheme.accent.opacity(level))
+                                .frame(width: 10, height: 10)
+                        }
+                        Text(String(localized: "多"))
+                        Spacer()
+                        Text(heatMetricTitle)
+                            .font(.caption2)
+                            .foregroundStyle(MagpieTheme.textMuted)
                     }
-                    Text(String(localized: "多"))
-                    Spacer()
-                    Text(heatMetricTitle)
-                        .font(.caption2)
-                        .foregroundStyle(MagpieTheme.textMuted)
+                    .font(.caption2)
+                    .foregroundStyle(MagpieTheme.textMuted)
                 }
-                .font(.caption2)
-                .foregroundStyle(MagpieTheme.textMuted)
             }
         }
         .magpieCard()
@@ -780,9 +1144,9 @@ struct UsageView: View {
 
     private var heatMetricTitle: String {
         switch heatMetric {
-        case "tokens": return String(localized: "Token")
-        case "cost": return String(localized: "费用")
-        default: return String(localized: "请求")
+        case "tokens": return String(localized: "按 Token 计数")
+        case "cost": return String(localized: "按费用计数")
+        default: return String(localized: "按请求数计数")
         }
     }
 
@@ -848,17 +1212,17 @@ struct UsageView: View {
         let calls = cell.day?.calls ?? 0
         let tokens = cell.day?.tokens ?? 0
         let cost = cell.day?.cost
-        return "\(cell.date)\n\(calls) 请求 · \(UsageDTO.formatTokens(tokens)) tokens" +
+        return String(localized: "\(cell.date)\n\(calls) 请求 · \(UsageDTO.formatTokens(tokens)) tokens") +
             (cost.map { String(format: " · $%.2f", $0) } ?? "")
     }
 
-    // MARK: - 账本列表
+    // MARK: - 账本请求列表 (Ledger List)
     private var ledgerList: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 MagpieSectionLabel(
-                    title: String(localized: "请求"),
-                    detail: viewModel.ledgerTotal > 0 ? "\(viewModel.ledgerTotal)" : nil
+                    title: String(localized: "请求账本流水"),
+                    detail: viewModel.ledgerTotal > 0 ? String(localized: "\(viewModel.ledgerTotal) 条记录") : nil
                 )
                 Spacer()
                 if viewModel.isLedgerLoading {
@@ -877,25 +1241,16 @@ struct UsageView: View {
                     )
                 }
             } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(viewModel.ledgerRows.enumerated()), id: \.element.id) { item in
-                        let index = item.offset
-                        let row = item.element
+                LazyVStack(spacing: 8) {
+                    ForEach(viewModel.ledgerRows) { row in
                         Button {
                             selectedRequest = row
                         } label: {
-                            ledgerRow(row)
+                            ledgerCard(row)
                         }
-                        .buttonStyle(.plain)
-
-                        if index < viewModel.ledgerRows.count - 1 {
-                            Divider()
-                                .background(MagpieTheme.borderSubtle)
-                                .padding(.leading, 48)
-                        }
+                        .buttonStyle(MagpiePressableStyle())
                     }
                 }
-                .magpieCard(padding: 0)
 
                 if viewModel.ledgerHasMore {
                     Button {
@@ -909,12 +1264,14 @@ struct UsageView: View {
                             } else {
                                 Image(systemName: "arrow.down.circle")
                             }
-                            Text(String(localized: "加载更多"))
+                            Text(String(localized: "加载更多记录"))
                         }
-                        .font(.footnote.weight(.medium))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(MagpieTheme.accent)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 12)
+                        .background(MagpieTheme.card)
+                        .magpieLiquidSurface(cornerRadius: 12)
                     }
                     .buttonStyle(.plain)
                     .disabled(viewModel.isLedgerLoading)
@@ -923,58 +1280,122 @@ struct UsageView: View {
         }
     }
 
-    private func ledgerRow(_ row: UsageLedgerRowDTO) -> some View {
-        HStack(spacing: 9) {
-            Circle()
+    // MARK: - 单请求账本卡片 (Ledger Card)
+    private func ledgerCard(_ row: UsageLedgerRowDTO) -> some View {
+        HStack(spacing: 0) {
+            // 左侧状态条
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(row.isError ? MagpieTheme.red : MagpieTheme.green)
-                .frame(width: 6, height: 6)
+                .frame(width: 3.5)
+                .padding(.vertical, 6)
+                .padding(.leading, 8)
 
-            MagpieIconView(icon: row.icon ?? row.agent, name: row.displayAgent, size: 26, cornerRadius: 6)
+            VStack(alignment: .leading, spacing: 6) {
+                // 第一行：Agent + 模型 + 状态
+                HStack(spacing: 8) {
+                    MagpieIconView(icon: row.icon ?? row.agent, name: row.displayAgent, size: 24, cornerRadius: 6)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.model ?? String(localized: "未知模型"))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(MagpieTheme.textPrimary)
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(row.displayAgent)
-                    Text("·")
-                    Text(row.displayProvider)
+                    Text(row.model ?? String(localized: "未知模型"))
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(MagpieTheme.textPrimary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    if let status = row.status {
+                        Text(row.isError ? "HTTP \(status)" : "200 OK")
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(row.isError ? MagpieTheme.red.opacity(0.16) : MagpieTheme.green.opacity(0.16)))
+                            .foregroundStyle(row.isError ? MagpieTheme.red : MagpieTheme.green)
+                    }
                 }
-                .font(.caption2)
-                .foregroundStyle(MagpieTheme.textMuted)
-                .lineLimit(1)
-            }
 
-            Spacer(minLength: 4)
+                // 第二行：Agent · Provider · Caller Key
+                HStack(spacing: 6) {
+                    Text(row.displayAgent)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(MagpieTheme.textSecondary)
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(MagpieTheme.textMuted)
+                    Text(RoutingFormat.maskString(row.displayProvider, isMasked: maskAccounts))
+                        .font(.caption2)
+                        .foregroundStyle(MagpieTheme.textMuted)
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(UsageDTO.formatTokens(row.totalTokens))
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    if let key = row.callerKeyLabel ?? row.callerKeyId, !key.isEmpty {
+                        Text("[\(RoutingFormat.maskString(key, isMasked: maskAccounts))]")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(MagpieTheme.amber)
+                    }
+
+                    Spacer()
+
+                    if let t = row.time {
+                        Text(formatTimeOnly(t))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                    }
+                }
+
+                // 第三行：延迟、Tokens 与花费
+                HStack(spacing: 12) {
+                    if let ms = row.millis, ms > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "stopwatch")
+                                .font(.system(size: 9))
+                            Text(RoutingFormat.latency(ms))
+                                .font(.system(size: 10.5, design: .monospaced))
+                        }
+                        .foregroundStyle(MagpieTheme.textMuted)
+                    }
+
+                    HStack(spacing: 3) {
+                        Image(systemName: "number")
+                            .font(.system(size: 9))
+                        Text(UsageDTO.formatTokens(row.totalTokens))
+                            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                    }
                     .foregroundStyle(MagpieTheme.textSecondary)
-                Text(row.formattedCost)
-                    .font(.system(size: 9.5, design: .monospaced))
-                    .foregroundStyle(MagpieTheme.green)
-            }
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(MagpieTheme.textMuted.opacity(0.7))
+                    Spacer()
+
+                    Text(row.formattedCost)
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(MagpieTheme.green)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(MagpieTheme.textMuted.opacity(0.4))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
         }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 9)
-        .contentShape(Rectangle())
+        .magpieCard(padding: 0)
     }
 
-    // MARK: - 会话
+    private func formatTimeOnly(_ isoString: String) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: isoString) {
+            let out = DateFormatter()
+            out.dateFormat = "HH:mm:ss"
+            return out.string(from: d)
+        }
+        return isoString
+    }
+
+    // MARK: - 会话 (Sessions)
     private var sessionsSection: some View {
         VStack(spacing: 14) {
             HStack(spacing: 0) {
-                kpi(String(localized: "会话"), "\(viewModel.sessions.count)", tint: MagpieTheme.accent)
+                kpi(String(localized: "会话总数"), "\(viewModel.sessions.count)", tint: MagpieTheme.accent)
                 kpiDivider
-                kpi(String(localized: "Tokens"), UsageDTO.formatTokens(viewModel.sessionTokenTotal), tint: MagpieTheme.purple)
+                kpi(String(localized: "总 Tokens"), UsageDTO.formatTokens(viewModel.sessionTokenTotal), tint: MagpieTheme.purple)
                 kpiDivider
-                kpi(String(localized: "费用"), String(format: "$%.2f", viewModel.sessionCostTotal), tint: MagpieTheme.green)
+                kpi(String(localized: "总费用"), String(format: "$%.2f", viewModel.sessionCostTotal), tint: MagpieTheme.green)
             }
             .magpieCard(padding: 12)
 
@@ -984,66 +1405,72 @@ struct UsageView: View {
                 } else {
                     emptyState(
                         icon: "bubble.left.and.bubble.right",
-                        title: String(localized: "还没有会话记录"),
-                        subtitle: String(localized: "Agent 的历史会话会在这里按最新顺序显示。")
+                        title: String(localized: "暂无会话"),
+                        subtitle: String(localized: "通过网关发起的会话将在此聚合并统计用量。")
                     )
                 }
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    MagpieSectionLabel(
-                        title: String(localized: "最新会话"),
-                        detail: String(localized: "完整管理在 Sessions 页")
-                    )
-                    LazyVStack(spacing: 8) {
-                        ForEach(viewModel.sessions.prefix(20)) { session in
-                            sessionRow(session)
-                        }
+                LazyVStack(spacing: 8) {
+                    ForEach(viewModel.sessions) { session in
+                        sessionCard(session)
                     }
                 }
             }
         }
     }
 
-    private func sessionRow(_ session: SessionDTO) -> some View {
-        HStack(spacing: 10) {
-            MagpieIconView(icon: session.agent, name: session.displayAgent, size: 30, cornerRadius: 7)
+    private func sessionCard(_ session: SessionDTO) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                MagpieIconView(icon: session.agent, name: session.displayAgent, size: 28, cornerRadius: 7)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.displayTitle)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(MagpieTheme.textPrimary)
-                    .lineLimit(2)
-                HStack(spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.displayTitle)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(MagpieTheme.textPrimary)
+                        .lineLimit(1)
                     Text(session.displayAgent)
-                    if let last = session.last {
-                        Text("·")
-                        Text(String(last.prefix(10)))
-                    }
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(MagpieTheme.textMuted)
                 }
-                .font(.caption2)
-                .foregroundStyle(MagpieTheme.textMuted)
-            }
 
-            Spacer(minLength: 4)
+                Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(session.formattedTokens)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(MagpieTheme.textSecondary)
-                Text(session.formattedCost)
-                    .font(.system(size: 9.5, design: .monospaced))
-                    .foregroundStyle(MagpieTheme.green)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(String(format: "$%.3f", session.cost ?? 0.0))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(MagpieTheme.green)
+                    Text("\(session.formattedTokens) tokens")
+                        .font(.caption2)
+                        .foregroundStyle(MagpieTheme.textMuted)
+                }
             }
         }
         .magpieCard(padding: 11)
     }
 
-    // MARK: - 上下文
+    private func kpi(_ title: String, _ value: String, tint: Color) -> some View {
+        VStack(spacing: 3) {
+            MagpieGradientNumber(text: value, tint: tint, size: 18)
+            Text(title)
+                .font(.system(size: 9.5))
+                .foregroundStyle(MagpieTheme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var kpiDivider: some View {
+        Rectangle()
+            .fill(MagpieTheme.borderSubtle)
+            .frame(width: 1, height: 24)
+    }
+
+    // MARK: - 上下文 (Context)
     private var contextSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let agents = viewModel.context?.agents, !agents.isEmpty {
                 MagpieSectionLabel(
-                    title: String(localized: "上下文窗口"),
+                    title: String(localized: "上下文窗口利用率"),
                     detail: String(localized: "最近 30 天")
                 )
                 ForEach(agents.sorted { ($0.score ?? 0) > ($1.score ?? 0) }) { agent in
@@ -1065,7 +1492,6 @@ struct UsageView: View {
         }
     }
 
-    // MARK: - 上下文优化建议
     private func tuneSection(_ tune: TuneStateDTO) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             MagpieSectionLabel(
@@ -1095,122 +1521,114 @@ struct UsageView: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .padding(12)
 
-            ForEach(advice) { item in
-                Divider().background(MagpieTheme.borderSubtle).padding(.leading, 52)
-                tuneAdviceRow(agent: agent.agent, advice: item)
+            Divider().background(MagpieTheme.borderSubtle)
+
+            VStack(spacing: 10) {
+                ForEach(advice) { item in
+                    tuneAdviceRow(agent: agent.agent, item: item)
+                }
             }
+            .padding(12)
         }
         .magpieCard(padding: 0)
     }
 
-    private func tuneAdviceRow(agent: String, advice: TuneAdviceDTO) -> some View {
-        HStack(spacing: 11) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(MagpieTheme.purple.opacity(0.13))
-                    .frame(width: 30, height: 30)
-                Image(systemName: advice.icon)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(MagpieTheme.purple)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Text(advice.title)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(MagpieTheme.textPrimary)
-                    if let model = advice.model, !model.isEmpty {
-                        MagpieStatusChip(text: model, color: MagpieTheme.accent)
+    private func tuneAdviceRow(agent: String, item: TuneAdviceDTO) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(item.knob)
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(MagpieTheme.textPrimary)
+                        if let model = item.model, !model.isEmpty {
+                            Text(model)
+                                .font(.caption2)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(MagpieTheme.pill, in: Capsule())
+                                .foregroundStyle(MagpieTheme.textSecondary)
+                        }
                     }
-                    if advice.inUse {
-                        MagpieStatusChip(text: String(localized: "已采用"), color: MagpieTheme.green)
+
+                    if let why = item.why, !why.isEmpty {
+                        Text(why)
+                            .font(.caption)
+                            .foregroundStyle(MagpieTheme.textMuted)
                     }
                 }
 
-                if let subtitle = advice.subtitle {
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(MagpieTheme.textMuted)
-                }
+                Spacer()
 
-                if let current = advice.currentValue, !current.isEmpty {
-                    Text(String(localized: "当前：\(current)") + (advice.proposedValue.map { String(localized: " → 建议：\($0)") } ?? ""))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(MagpieTheme.textSecondary)
+                if item.applied == true {
+                    Button {
+                        if let client = app.client {
+                            Task { _ = await viewModel.undoTune(client: client, agent: agent, advice: item) }
+                        }
+                    } label: {
+                        Text(String(localized: "已生效 · 撤销"))
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(MagpieTheme.pill, in: Capsule())
+                            .foregroundStyle(MagpieTheme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isOperating)
+                } else if item.proposedValue != nil {
+                    Button {
+                        if let client = app.client {
+                            Task { _ = await viewModel.applyTune(client: client, agent: agent, advice: item) }
+                        }
+                    } label: {
+                        Text(String(localized: "采用建议"))
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(MagpieTheme.accent, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isOperating)
                 }
-            }
-
-            Spacer(minLength: 6)
-
-            if advice.inUse {
-                Button(String(localized: "撤销")) {
-                    runTune(agent: agent, advice: advice, undo: true)
-                }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.plain)
-                .foregroundStyle(MagpieTheme.red)
-            } else if advice.proposedValue != nil {
-                Button(String(localized: "采用")) {
-                    runTune(agent: agent, advice: advice, undo: false)
-                }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.plain)
-                .foregroundStyle(MagpieTheme.accent)
-            } else if advice.few == true {
-                Text(String(localized: "调用太少"))
-                    .font(.caption2)
-                    .foregroundStyle(MagpieTheme.textMuted)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private func runTune(agent: String, advice: TuneAdviceDTO, undo: Bool) {
-        guard let client = app.client else { return }
-        Task {
-            let ok = undo
-                ? await viewModel.undoTune(client: client, agent: agent, advice: advice)
-                : await viewModel.applyTune(client: client, agent: agent, advice: advice)
-            if !ok {
-                actionError = viewModel.errorMessage ?? String(localized: "操作失败")
             }
         }
     }
 
     private func contextCard(_ agent: UsageContextAgentDTO) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 11) {
-                MagpieIconView(icon: agent.agent, name: agent.agent, size: 34, cornerRadius: 8)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                MagpieIconView(icon: agent.agent, name: agent.agent, size: 28, cornerRadius: 7)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(agent.agent)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13.5, weight: .semibold))
                         .foregroundStyle(MagpieTheme.textPrimary)
-                    Text(String(localized: "\(agent.requests ?? 0) 个请求 · \(agent.sessions ?? 0) 个会话"))
+                    Text(String(localized: "\(agent.requests ?? 0) 个请求 · \(agent.calls ?? 0) 次记录"))
                         .font(.caption2)
                         .foregroundStyle(MagpieTheme.textMuted)
                 }
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 1) {
-                    MagpieGradientNumber(
-                        text: "\(agent.score ?? 0)",
-                        tint: scoreColor(agent.score ?? 0),
-                        size: 22
-                    )
-                    Text(String(localized: "上下文评分"))
-                        .font(.caption2)
-                        .foregroundStyle(MagpieTheme.textMuted)
+                if let score = agent.score {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("\(score)")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(contextScoreColor(score))
+                        Text(String(localized: "上下文得分"))
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                    }
                 }
             }
 
-            ProgressView(value: Double(min(max(agent.score ?? 0, 0), 100)), total: 100)
-                .tint(scoreColor(agent.score ?? 0))
+            if let score = agent.score {
+                ProgressView(value: Double(min(max(score, 0), 100)), total: 100)
+                    .tint(contextScoreColor(score))
+            }
 
             HStack(spacing: 0) {
                 contextMetric(String(localized: "中位上下文"), UsageDTO.formatTokens(agent.median ?? 0))
@@ -1223,23 +1641,8 @@ struct UsageView: View {
             }
 
             if let tags = agent.tags, !tags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 5) {
-                        ForEach(tags) { tag in
-                            MagpieStatusChip(
-                                text: tag.key,
-                                color: tagColor(tag.tone),
-                                icon: "circle.fill"
-                            )
-                        }
-                    }
-                }
-                .scrollClipDisabled()
-            }
-
-            if let models = agent.models, !models.isEmpty {
-                Text(models.joined(separator: " · "))
-                    .font(.system(size: 9.5, design: .monospaced))
+                Text(tags.map(\.key).joined(separator: " · "))
+                    .font(.system(size: 9.5))
                     .foregroundStyle(MagpieTheme.textMuted)
                     .lineLimit(1)
             }
@@ -1247,28 +1650,13 @@ struct UsageView: View {
         .magpieCard()
     }
 
-    private func scoreColor(_ score: Int) -> Color {
-        if score >= 80 { return MagpieTheme.green }
-        if score >= 60 { return MagpieTheme.accent }
-        return MagpieTheme.amber
-    }
-
-    private func tagColor(_ tone: String?) -> Color {
-        switch tone {
-        case "good": return MagpieTheme.green
-        case "warn": return MagpieTheme.amber
-        default: return MagpieTheme.accent
-        }
-    }
-
     private func contextMetric(_ title: String, _ value: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(MagpieTheme.textPrimary)
-                .lineLimit(1)
             Text(title)
-                .font(.system(size: 9))
+                .font(.system(size: 8.5))
                 .foregroundStyle(MagpieTheme.textMuted)
         }
         .frame(maxWidth: .infinity)
@@ -1280,147 +1668,41 @@ struct UsageView: View {
             .frame(width: 1, height: 22)
     }
 
-    // MARK: - 配额与签到
-    private var checkinCard: some View {
-        HStack {
-            Image(systemName: "sparkles")
-                .font(.title3)
-                .foregroundStyle(MagpieTheme.accent)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "每日签到额度"))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(MagpieTheme.textPrimary)
-                Text(String(localized: "一键完成 WorkBuddy、Trae、Qoder 等账号签到"))
-                    .font(.caption2)
-                    .foregroundStyle(MagpieTheme.textMuted)
-            }
-
-            Spacer()
-
-            Button {
-                performDailyCheckins()
-            } label: {
-                if isCheckingIn {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Text(String(localized: "一键签到"))
-                }
-            }
-            .buttonStyle(MagpiePrimaryButtonStyle(tint: MagpieTheme.accent))
-            .disabled(isCheckingIn)
-        }
-        .magpieCard()
+    private func contextScoreColor(_ score: Int) -> Color {
+        if score >= 80 { return MagpieTheme.green }
+        if score >= 60 { return MagpieTheme.accent }
+        return MagpieTheme.amber
     }
 
-    private var quotasSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            MagpieSectionLabel(title: String(localized: "服务商配额池"))
-
-            LazyVStack(spacing: 10) {
-                ForEach(viewModel.quotas) { quota in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            MagpieIconView(icon: quota.icon ?? quota.provider, name: quota.name, size: 28, cornerRadius: 6)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(quota.name)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(MagpieTheme.textPrimary)
-                                Text(quota.provider)
-                                    .font(.caption2)
-                                    .foregroundStyle(MagpieTheme.textMuted)
-                            }
-
-                            Spacer()
-
-                            if let balance = quota.balance, !balance.isEmpty {
-                                Text(balance)
-                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(MagpieTheme.green)
-                            }
-
-                            Button {
-                                guard let client = app.client else { return }
-                                Task { await viewModel.refreshQuota(client: client, provider: quota.provider) }
-                            } label: {
-                                if viewModel.isRefreshingQuota {
-                                    ProgressView().controlSize(.mini)
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(MagpieTheme.textMuted)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(viewModel.isRefreshingQuota)
-                            .accessibilityLabel(String(localized: "刷新这张配额卡"))
-                        }
-
-                        if let windows = quota.windows, !windows.isEmpty {
-                            Divider().background(MagpieTheme.borderSubtle)
-
-                            ForEach(windows) { win in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(win.name)
-                                            .font(.caption)
-                                            .foregroundStyle(MagpieTheme.textSecondary)
-                                        Spacer()
-                                        Text(String(format: "%.1f%%", win.percentUsed))
-                                            .font(.caption.weight(.bold))
-                                            .foregroundStyle(win.percentUsed > 80 ? MagpieTheme.red : MagpieTheme.accent)
-                                    }
-
-                                    ProgressView(value: min(win.percentUsed, 100.0), total: 100.0)
-                                        .tint(win.percentUsed > 80 ? MagpieTheme.red : MagpieTheme.accent)
-                                }
-                            }
-                        }
-                    }
-                    .magpieCard()
-                }
-            }
-        }
-    }
-
-    private func performDailyCheckins() {
-        guard let client = app.client else { return }
-        isCheckingIn = true
-        Task {
-            defer { isCheckingIn = false }
-            _ = try? await client.sendData(Endpoint.post("/api/usage/workbuddy-checkin"))
-            _ = try? await client.sendData(Endpoint.post("/api/usage/trae-checkin"))
-            _ = try? await client.sendData(Endpoint.post("/api/usage/qoder-checkin"))
-            _ = try? await client.sendData(Endpoint.post("/api/usage/minimax-checkin"))
-            await viewModel.load(client: client)
-        }
-    }
-
-    // MARK: - 通用
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(MagpieTheme.red)
             Text(message)
-            Spacer(minLength: 0)
+                .font(.caption)
+                .foregroundStyle(MagpieTheme.red)
+            Spacer()
         }
-        .font(.caption)
-        .foregroundStyle(MagpieTheme.red)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .magpieCard(padding: 12)
+        .padding(10)
+        .background(MagpieTheme.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func emptyState(icon: String, title: String, subtitle: String) -> some View {
         VStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 34))
-                .foregroundStyle(MagpieTheme.textMuted.opacity(0.65))
+            ZStack {
+                Circle()
+                    .fill(MagpieTheme.pill)
+                    .frame(width: 48, height: 48)
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundStyle(MagpieTheme.textMuted)
+            }
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(.headline)
                 .foregroundStyle(MagpieTheme.textPrimary)
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(MagpieTheme.textSecondary)
+                .foregroundStyle(MagpieTheme.textMuted)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -1429,25 +1711,38 @@ struct UsageView: View {
     }
 }
 
-// MARK: - 指标卡
+// MARK: - 核心指标卡 (MetricCard)
 private struct MetricCard: View {
     let title: String
     let value: String
+    var sub: String? = nil
     let icon: String
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .font(.subheadline)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+                    .font(.subheadline)
+                Spacer()
+            }
+
             MagpieGradientNumber(text: value, tint: color, size: 22)
+
             Text(title)
-                .font(.caption)
-                .foregroundStyle(MagpieTheme.textMuted)
+                .font(.system(size: 11))
+                .foregroundStyle(MagpieTheme.textPrimary)
+
+            if let sub, !sub.isEmpty {
+                Text(sub)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(MagpieTheme.textMuted)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .magpieCard(padding: 14, cornerRadius: 18)
+        .magpieCard(padding: 12, cornerRadius: 16)
     }
 }
 
@@ -1464,9 +1759,9 @@ private struct TokenDistributionChart: View {
 
     private var slices: [TokenSlice] {
         [
-            TokenSlice(category: "输入", amount: max(usage.input ?? 0, 1), color: MagpieTheme.amber),
-            TokenSlice(category: "输出", amount: max(usage.output ?? 0, 1), color: MagpieTheme.purple),
-            TokenSlice(category: "缓存", amount: max((usage.cache_read ?? 0) + (usage.cache_write ?? 0), 1), color: MagpieTheme.cyan)
+            TokenSlice(category: String(localized: "输入"), amount: max(usage.input ?? 0, 1), color: MagpieTheme.amber),
+            TokenSlice(category: String(localized: "输出"), amount: max(usage.output ?? 0, 1), color: MagpieTheme.purple),
+            TokenSlice(category: String(localized: "缓存"), amount: max((usage.cache_read ?? 0) + (usage.cache_write ?? 0), 1), color: MagpieTheme.cyan)
         ]
     }
 
@@ -1483,9 +1778,10 @@ private struct TokenDistributionChart: View {
     }
 }
 
-// MARK: - 请求详情
+// MARK: - 请求详情面板 (UsageRequestDetailSheet)
 private struct UsageRequestDetailSheet: View {
     let row: UsageLedgerRowDTO
+    var isMasked: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -1530,15 +1826,15 @@ private struct UsageRequestDetailSheet: View {
                     .magpieCard()
 
                     VStack(alignment: .leading, spacing: 9) {
-                        MagpieSectionLabel(title: String(localized: "请求"))
+                        MagpieSectionLabel(title: String(localized: "请求明细"))
                         info(String(localized: "Agent"), row.displayAgent)
-                        info(String(localized: "提供方"), row.displayProvider)
+                        info(String(localized: "提供方"), RoutingFormat.maskString(row.displayProvider, isMasked: isMasked))
                         info(String(localized: "模型"), row.model)
                         if let requested = row.requested, !requested.isEmpty, requested != row.model {
                             info(String(localized: "请求的模型"), requested)
                         }
-                        info(String(localized: "会话"), row.session)
-                        info(String(localized: "调用 Key"), row.callerKeyLabel ?? row.callerKeyId)
+                        info(String(localized: "会话 ID"), row.session)
+                        info(String(localized: "调用 Key"), RoutingFormat.maskString(row.callerKeyLabel ?? row.callerKeyId ?? "", isMasked: isMasked))
                         info(String(localized: "耗时"), row.millis.map { "\($0)ms" })
                         info(String(localized: "时间"), row.time)
                         info(String(localized: "来源"), row.source)

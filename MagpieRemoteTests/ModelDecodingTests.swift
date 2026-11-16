@@ -207,6 +207,21 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNotNil(key.limitUsages[0].resetDate)
     }
 
+    func testQuotaItemsForDifferentAccountsHaveUniqueIDs() throws {
+        let json = """
+        [
+          {"provider": "codex", "name": "Codex", "user": "alice", "windows": []},
+          {"provider": "codex", "name": "Codex", "user": "bob", "windows": []},
+          {"provider": "mistral", "name": "Mistral", "windows": []}
+        ]
+        """.data(using: .utf8)!
+
+        let quotas = try JSONDecoder().decode([QuotaItemDTO].self, from: json)
+        XCTAssertEqual(quotas.count, 3)
+        XCTAssertEqual(quotas[0].user, "alice")
+        XCTAssertEqual(Set(quotas.map(\.id)).count, quotas.count)
+    }
+
     func testExtractCleanURLAndKey() {
         let input = "https://mapm.2020713.xyz/?k=79261a46b263781ddc6af6d168a8597543d8065fc5f71f14c2b942bef3f8afa0"
         let (clean, key) = ConnectionEditViewModel.extractCleanURLAndKey(from: input)

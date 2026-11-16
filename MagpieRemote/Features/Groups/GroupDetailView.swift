@@ -4,16 +4,22 @@ import UIKit
 /// 路由组详情页：成员、策略与故障转移顺序，支持编辑 / 开关 / 手动指定 / 分享 / 删除。
 struct GroupDetailView: View {
     let groupRef: String
+    var viewModel: GroupsViewModel? = nil
     @Environment(AppModel.self) private var app
-    @Environment(GroupsViewModel.self) private var viewModel
+    @Environment(GroupsViewModel.self) private var envViewModel: GroupsViewModel?
     @Environment(\.dismiss) private var dismiss
+    @State private var fallbackViewModel = GroupsViewModel()
+
+    private var activeVM: GroupsViewModel {
+        viewModel ?? envViewModel ?? fallbackViewModel
+    }
 
     @State private var showingEdit = false
     @State private var showingShare = false
     @State private var showingDelete = false
 
     private var group: GroupDTO? {
-        viewModel.group(ref: groupRef)
+        activeVM.group(ref: groupRef)
     }
 
     var body: some View {
@@ -71,20 +77,20 @@ struct GroupDetailView: View {
         .sheet(isPresented: $showingEdit) {
             if let group {
                 GroupEditView(editing: group)
-                    .environment(viewModel)
+                    .environment(activeVM)
             }
         }
         .sheet(isPresented: $showingShare) {
             if let group {
                 GroupShareSheetInline(group: group)
-                    .environment(viewModel)
+                    .environment(activeVM)
             }
         }
         .alert(String(localized: "删除这个路由组？"), isPresented: $showingDelete) {
             Button(String(localized: "删除"), role: .destructive) {
                 guard let client = app.client, let group else { return }
                 Task {
-                    if await viewModel.delete(client: client, id: group.id) {
+                    if await activeVM.delete(client: client, id: group.id) {
                         dismiss()
                     }
                 }
@@ -219,7 +225,7 @@ struct GroupDetailView: View {
                 ForEach(group.members ?? [], id: \.self) { member in
                     Button {
                         guard let client = app.client else { return }
-                        Task { _ = await viewModel.pick(client: client, id: group.id, member: member) }
+                        Task { _ = await activeVM.pick(client: client, id: group.id, member: member) }
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: group.picked == member ? "largecircle.fill.circle" : "circle")
@@ -378,7 +384,7 @@ struct GroupDetailView: View {
                 get: { !(group.off ?? false) },
                 set: { on in
                     guard let client = app.client else { return }
-                    Task { _ = await viewModel.switchGroup(client: client, id: group.id, on: on) }
+                    Task { _ = await activeVM.switchGroup(client: client, id: group.id, on: on) }
                 }
             )) {
                 VStack(alignment: .leading, spacing: 2) {

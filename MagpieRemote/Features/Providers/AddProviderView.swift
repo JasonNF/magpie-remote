@@ -727,7 +727,7 @@ struct AddProviderView: View {
                     .foregroundStyle(MagpieTheme.textPrimary)
 
                 if detection.succeeded {
-                    Text("\(detection.ms)ms")
+                    Text("\(Int(detection.ms ?? 0))ms")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(MagpieTheme.green)
                 } else if let status = detection.status, status > 0 {

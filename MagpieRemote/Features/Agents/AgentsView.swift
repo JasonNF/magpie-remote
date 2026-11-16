@@ -6,6 +6,7 @@ import SwiftData
 /// 支持 Profiles 预设切换与创建、Wired 接入控制、一键修复配置漂移（Reapply）。
 struct AgentsView: View {
     @Environment(AppModel.self) private var app
+    @Namespace private var zoomNamespace
     @State private var viewModel = AgentsViewModel()
     @State private var isRescanning = false
     @State private var showSaveProfileSheet = false
@@ -67,6 +68,7 @@ struct AgentsView: View {
                                             }
                                         )
                                     }
+                                    .matchedTransitionSource(id: agent.id, in: zoomNamespace)
                                     .buttonStyle(.plain)
                                     .transition(.magpieContent)
                                 }
@@ -87,6 +89,7 @@ struct AgentsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .padding(.bottom, 96)
             }
             .magpiePageBackground()
             .navigationTitle(String(localized: "Agents"))
@@ -94,6 +97,7 @@ struct AgentsView: View {
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationDestination(for: AgentRoute.self) { route in
                 AgentDetailView(agentID: route.id)
+                    .navigationTransition(.zoom(sourceID: route.id, in: zoomNamespace))
             }
             .navigationDestination(for: PickerRoute.self) { route in
                 ModelPickerView(agentID: route.agentID, fieldKey: route.fieldKey)
@@ -245,7 +249,7 @@ struct AgentsView: View {
             )
 
             VStack(spacing: 0) {
-                ForEach(Array(viewModel.quotas.prefix(3).enumerated()), id: \.element.id) { item in
+                ForEach(Array(viewModel.quotas.prefix(3).enumerated()), id: \.offset) { item in
                     let index = item.offset
                     let quota = item.element
                     HStack(spacing: 10) {
@@ -271,7 +275,7 @@ struct AgentsView: View {
                                         .foregroundStyle(MagpieTheme.textMuted)
                                 }
                             } else {
-                                Text(quota.provider)
+                                Text(quota.user.map { "\(quota.provider) · \($0)" } ?? quota.provider)
                                     .font(.caption2)
                                     .foregroundStyle(MagpieTheme.textMuted)
                             }
@@ -427,13 +431,17 @@ struct AgentsView: View {
                                 }
                                 Text(profile.name)
                                     .font(.subheadline.weight(.medium))
+                                    .lineLimit(1)
                                 if let summary = profile.summary {
                                     Text(summary)
                                         .font(.caption2)
                                         .foregroundStyle(profile.inUse == true ? MagpieTheme.accent : MagpieTheme.textMuted)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
                                 }
                             }
                             .magpieChip(isSelected: profile.inUse == true)
+                            .frame(maxWidth: 250, alignment: .leading)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -744,8 +752,8 @@ private struct AgentCard: View {
                             .foregroundStyle(MagpieTheme.textPrimary)
 
                         if agent.wired == true {
-                            HStack(spacing: 3) {
-                                Circle().fill(MagpieTheme.green).frame(width: 5, height: 5)
+                            HStack(spacing: 4) {
+                                MagpiePulseDot(color: MagpieTheme.green)
                                 Text(String(localized: "已接入"))
                             }
                             .font(.system(size: 10, weight: .bold))
@@ -805,6 +813,7 @@ private struct AgentCard: View {
 
                 // 快捷接入开关
                 Button {
+                    MagpieHaptics.light()
                     onToggleWired(!(agent.wired ?? false))
                 } label: {
                     Image(systemName: agent.wired == true ? "checkmark.circle.fill" : "circle")
@@ -837,6 +846,7 @@ private struct AgentCard: View {
 
                 if let drift = agent.drift, drift.field != nil {
                     Button {
+                        MagpieHaptics.medium()
                         onReapply()
                     } label: {
                         HStack(spacing: 3) {
@@ -858,7 +868,7 @@ private struct AgentCard: View {
                 }
             }
         }
-        .magpieCard()
+        .magpieLiquidCard(padding: 14, cornerRadius: 20)
         .contextMenu {
             if agent.command?.isEmpty == false || agent.launch?.isEmpty == false {
                 Button(action: onOpen) {

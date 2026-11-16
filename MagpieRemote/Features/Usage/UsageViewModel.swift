@@ -51,6 +51,7 @@ final class UsageViewModel {
     // 请求筛选
     var ledgerQuery = ""
     var ledgerFailedOnly = false
+    var ledgerRetriedOnly = false
     var ledgerProvider = ""
     var ledgerAgent = ""
     var ledgerOffset = 0
@@ -295,6 +296,7 @@ final class UsageViewModel {
         let q = ledgerQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if !q.isEmpty { query.append(URLQueryItem(name: "q", value: q)) }
         if ledgerFailedOnly { query.append(URLQueryItem(name: "failed", value: "1")) }
+        if ledgerRetriedOnly { query.append(URLQueryItem(name: "retried", value: "1")) }
         if !ledgerProvider.isEmpty { query.append(URLQueryItem(name: "provider", value: ledgerProvider)) }
         if !ledgerAgent.isEmpty { query.append(URLQueryItem(name: "agent", value: ledgerAgent)) }
         do {
@@ -321,6 +323,7 @@ final class UsageViewModel {
         let q = ledgerQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if !q.isEmpty { query.append(URLQueryItem(name: "q", value: q)) }
         if ledgerFailedOnly { query.append(URLQueryItem(name: "failed", value: "1")) }
+        if ledgerRetriedOnly { query.append(URLQueryItem(name: "retried", value: "1")) }
         if !ledgerProvider.isEmpty { query.append(URLQueryItem(name: "provider", value: ledgerProvider)) }
         if !ledgerAgent.isEmpty { query.append(URLQueryItem(name: "agent", value: ledgerAgent)) }
         do {
@@ -427,6 +430,51 @@ final class UsageViewModel {
     var ledgerRows: [UsageLedgerRowDTO] { ledger?.rows ?? [] }
     var ledgerProviders: [UsageNamedDTO] { ledger?.providers ?? [] }
     var ledgerAgents: [UsageNamedDTO] { ledger?.agents ?? [] }
+
+    // MARK: - Web 1:1 对齐的核心 KPI 辅助指标
+    var ledgerTotalTokens: Int {
+        (ledger?.input ?? usage?.input ?? 0) + (ledger?.output ?? usage?.output ?? 0) + (ledger?.cacheRead ?? usage?.cache_read ?? 0)
+    }
+
+    var ledgerInputTokens: Int {
+        ledger?.input ?? usage?.input ?? 0
+    }
+
+    var ledgerOutputTokens: Int {
+        ledger?.output ?? usage?.output ?? 0
+    }
+
+    var ledgerCacheTokens: Int {
+        (ledger?.cacheRead ?? usage?.cache_read ?? 0) + (ledger?.cacheWrite ?? usage?.cache_write ?? 0)
+    }
+
+    var ledgerTotalCalls: Int {
+        ledger?.calls ?? usage?.calls ?? 0
+    }
+
+    var ledgerErrorCalls: Int {
+        usage?.errors ?? 0
+    }
+
+    var ledgerRetriedCalls: Int {
+        usage?.retried ?? 0
+    }
+
+    var ledgerSuccessRate: Double? {
+        let total = ledgerTotalCalls
+        guard total > 0 else { return nil }
+        let errors = ledgerErrorCalls
+        let rate = 1.0 - (Double(errors) / Double(total))
+        return max(0.0, min(1.0, rate))
+    }
+
+    var ledgerCacheHitRate: Double? {
+        let read = ledger?.cacheRead ?? usage?.cache_read ?? 0
+        let inp = ledger?.input ?? usage?.input ?? 0
+        let sum = read + inp
+        guard sum > 0 else { return nil }
+        return Double(read) / Double(sum)
+    }
 
     var sessionTokenTotal: Int {
         sessions.reduce(0) { $0 + ($1.input ?? 0) + ($1.output ?? 0) }

@@ -5,8 +5,19 @@ import UIKit
 /// 支持 Agent 品牌标识、Token 开销、花费、检索以及完整 Transcript 对话流查看。
 struct SessionsView: View {
     @Environment(AppModel.self) private var app
+    @Namespace private var zoomNamespace
     @State private var viewModel = SessionsViewModel()
     @State private var searchText = ""
+    @State private var showingManage = SessionsView.devOpensManage
+
+    /// DEBUG 联调：`MAGPIE_DEV_SESSIONS_MANAGE=1` 启动即打开会话管理。
+    private static var devOpensManage: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["MAGPIE_DEV_SESSIONS_MANAGE"] == "1"
+        #else
+        return false
+        #endif
+    }
     @State private var selectedAgent = ""
 
     private var agents: [String] {
@@ -62,6 +73,7 @@ struct SessionsView: View {
                                         SessionCard(session: session)
                                     }
                                     .buttonStyle(.plain)
+                                    .matchedTransitionSource(id: session.id, in: zoomNamespace)
                                 }
                             }
                         }
@@ -69,6 +81,7 @@ struct SessionsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .padding(.bottom, 96)
             }
             .magpiePageBackground()
             .searchable(text: $searchText, prompt: String(localized: "搜索会话标题、ID 或 Agent…"))
@@ -77,18 +90,31 @@ struct SessionsView: View {
             .navigationDestination(for: SessionDTO.self) { session in
                 SessionDetailView(session: session)
                     .environment(viewModel)
+                    .navigationTransition(.zoom(sourceID: session.id, in: zoomNamespace))
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        if let client = app.client {
-                            Task { await viewModel.load(client: client) }
+                    Menu {
+                        Button {
+                            if let client = app.client {
+                                Task { await viewModel.load(client: client) }
+                            }
+                        } label: {
+                            Label(String(localized: "刷新"), systemImage: "arrow.clockwise")
+                        }
+                        Button {
+                            showingManage = true
+                        } label: {
+                            Label(String(localized: "会话管理…"), systemImage: "slider.horizontal.3")
                         }
                     } label: {
-                        Image(systemName: "arrow.clockwise")
+                        Image(systemName: "ellipsis.circle")
                             .font(.body.weight(.medium))
                     }
                 }
+            }
+            .sheet(isPresented: $showingManage) {
+                SessionsManageSheet()
             }
             .overlay {
                 if viewModel.isLoading && viewModel.sessions.isEmpty {
@@ -118,7 +144,7 @@ struct SessionsView: View {
             divider
             sessionStat(String(localized: "Agents"), "\(agents.count)", tint: MagpieTheme.cyan)
         }
-        .magpieCard(padding: 13, cornerRadius: 18)
+        .magpieLiquidCard(padding: 13, cornerRadius: 18)
     }
 
     private func sessionStat(_ title: String, _ value: String, tint: Color) -> some View {
@@ -249,7 +275,7 @@ private struct SessionCard: View {
                     .foregroundStyle(MagpieTheme.textMuted)
             }
         }
-        .magpieCard(padding: 12)
+        .magpieLiquidCard(padding: 12, cornerRadius: 18)
     }
 }
 

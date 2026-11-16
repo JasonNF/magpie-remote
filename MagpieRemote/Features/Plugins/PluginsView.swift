@@ -71,7 +71,7 @@ struct PluginsView: View {
         MagpieNavigationContainer {
             ScrollView {
                 VStack(spacing: 16) {
-                    hero
+                    summaryBar
                     tabBar
 
                     if let error = viewModel.errorMessage {
@@ -174,6 +174,7 @@ struct PluginsView: View {
                         }
                     }
                 }
+                .presentationDetents([.medium, .large])
             }
             .confirmationDialog(
                 String(localized: "卸载 \(pendingRemoval?.displayName ?? "插件")？"),
@@ -239,42 +240,55 @@ struct PluginsView: View {
         }
     }
 
-    // MARK: - 顶部
-    private var hero: some View {
-        VStack(spacing: 13) {
-            MagpiePageHeader(
-                title: String(localized: "插件"),
-                subtitle: String(localized: "提供商、网关中间件、工具与页面"),
-                icon: "puzzlepiece.extension.fill",
-                tint: Color(hex: "ec4899")
-            )
-
-            HStack(spacing: 8) {
-                MagpieStatusChip(
-                    text: viewModel.hasBun ? (viewModel.bunVersion ?? "Bun") : String(localized: "Bun 未安装"),
-                    color: viewModel.hasBun ? MagpieTheme.green : MagpieTheme.amber,
-                    icon: viewModel.hasBun ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                )
-                MagpieStatusChip(
-                    text: String(localized: "\(viewModel.plugins.count) 个插件"),
-                    color: MagpieTheme.accent,
-                    icon: "shippingbox.fill"
-                )
-                if updateCount > 0 {
-                    MagpieStatusChip(
-                        text: String(localized: "\(updateCount) 个更新"),
-                        color: MagpieTheme.amber,
-                        icon: "arrow.down.circle.fill"
-                    )
+    // MARK: - 概览状态栏
+    private var summaryBar: some View {
+        HStack(spacing: 8) {
+            if viewModel.hasBun {
+                HStack(spacing: 4) {
+                    MagpiePulseDot(color: MagpieTheme.green)
+                    Text(viewModel.bunVersion ?? "Bun")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                 }
-                Spacer()
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(MagpieTheme.greenSoft, in: Capsule())
+                .foregroundStyle(MagpieTheme.green)
+            } else {
+                MagpieStatusChip(
+                    text: String(localized: "Bun 未安装"),
+                    color: MagpieTheme.amber,
+                    icon: "exclamationmark.triangle.fill"
+                )
             }
+            MagpieStatusChip(
+                text: String(localized: "\(viewModel.plugins.count) 个插件"),
+                color: MagpieTheme.accent,
+                icon: "shippingbox.fill"
+            )
+            if updateCount > 0 {
+                MagpieStatusChip(
+                    text: String(localized: "\(updateCount) 个更新"),
+                    color: MagpieTheme.amber,
+                    icon: "arrow.down.circle.fill"
+                )
+            }
+            Spacer()
         }
-        .magpieCard()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .magpieCard(padding: 0, cornerRadius: 14)
     }
 
     private var tabBar: some View {
-        Picker("", selection: $tab) {
+        Picker("", selection: Binding(
+            get: { tab },
+            set: { next in
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                    tab = next
+                }
+                MagpieHaptics.light()
+            }
+        )) {
             ForEach(PluginTab.allCases) { item in
                 Text(item.title).tag(item)
             }
@@ -341,6 +355,7 @@ struct PluginsView: View {
                 Toggle("", isOn: Binding(
                     get: { !plugin.isOff },
                     set: { on in
+                        MagpieHaptics.light()
                         if let client = app.client {
                             Task { await viewModel.toggle(client: client, spec: plugin.spec, turnOn: on) }
                         }
@@ -427,7 +442,7 @@ struct PluginsView: View {
                     .lineLimit(2)
             }
         }
-        .magpieCard(padding: 12)
+        .magpieLiquidCard(padding: 12, cornerRadius: 18)
         .contextMenu {
             Button(role: .destructive) {
                 pendingRemoval = plugin
@@ -810,7 +825,7 @@ struct PluginsView: View {
                         Text(String(localized: "Bun 插件运行时"))
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(MagpieTheme.textPrimary)
-                        Text(viewModel.hasBun ? (viewModel.bunVersion ?? "已就绪") : String(localized: "安装第一个插件时自动下载"))
+                        Text(viewModel.hasBun ? (viewModel.bunVersion ?? String(localized: "已就绪")) : String(localized: "安装第一个插件时自动下载"))
                             .font(.caption2)
                             .foregroundStyle(MagpieTheme.textMuted)
                     }

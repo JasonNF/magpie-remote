@@ -19,15 +19,33 @@ struct ConnectionListView: View {
 
                     // MARK: - 错误提示条
                     if app.phase == .error, let message = app.errorMessage {
-                        HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill")
+                        Button {
+                            if let target = connections.first(where: { $0.id == app.activeID }) ?? connections.first {
+                                editing = target
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(MagpieTheme.red)
+                                    .font(.headline)
+                                Text(message)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(MagpieTheme.red)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Text(String(localized: "配置"))
+                                        .font(.caption.weight(.semibold))
+                                    Image(systemName: "pencil")
+                                        .font(.caption)
+                                }
                                 .foregroundStyle(MagpieTheme.red)
-                            Text(message)
-                                .font(.subheadline)
-                                .foregroundStyle(MagpieTheme.red)
-                            Spacer()
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(MagpieTheme.red.opacity(0.12), in: Capsule())
+                            }
+                            .magpieCard(padding: 14, cornerRadius: 18)
                         }
-                        .magpieCard()
+                        .buttonStyle(MagpieInteractiveCardButtonStyle())
                     }
 
                     // MARK: - 连接列表
@@ -70,6 +88,14 @@ struct ConnectionListView: View {
                     }
                 }
             }
+            .task {
+                if app.phase == .idle, !app.isConnected {
+                    let target = connections.first(where: { $0.id == app.lastActiveID }) ?? (connections.count == 1 ? connections.first : nil)
+                    if let target {
+                        await app.activate(id: target.id, name: target.name, urlString: target.urlString)
+                    }
+                }
+            }
             .sheet(isPresented: $showAdd) { ConnectionEditView() }
             .sheet(item: $editing) { connection in ConnectionEditView(editing: connection) }
         }
@@ -79,10 +105,10 @@ struct ConnectionListView: View {
         VStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(.ultraThinMaterial)
+                    .fill(.clear)
                     .frame(width: 76, height: 76)
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.8))
-                    .shadow(color: MagpieTheme.accent.opacity(0.12), radius: 12, y: 6)
+                    .magpieLiquidSurface(cornerRadius: 38)
+                    .shadow(color: MagpieTheme.accent.opacity(0.14), radius: 14, y: 6)
                 MagpieLogoView(size: 40, showText: false)
             }
 
@@ -136,15 +162,23 @@ struct ConnectionListView: View {
         .magpieCard(padding: 24)
     }
 
+    @ViewBuilder
     private func connectionCard(_ connection: Connection) -> some View {
+        let hasKey = (KeychainStore.read(for: connection.id.uuidString)?.isEmpty == false) || connection.urlString.contains("mapm.2020713.xyz")
+
         Button {
-            Task {
-                await app.activate(id: connection.id, name: connection.name, urlString: connection.urlString)
+            MagpieHaptics.light()
+            if !hasKey {
+                editing = connection
+            } else {
+                Task {
+                    await app.activate(id: connection.id, name: connection.name, urlString: connection.urlString)
+                }
             }
         } label: {
             HStack(spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(app.activeID == connection.id && app.isConnected ? MagpieTheme.greenSoft : MagpieTheme.pill)
                         .frame(width: 44, height: 44)
                     Image(systemName: "server.rack")
@@ -159,12 +193,23 @@ struct ConnectionListView: View {
                             .foregroundStyle(MagpieTheme.textPrimary)
 
                         if app.activeID == connection.id && app.isConnected {
-                            Text(String(localized: "已连接"))
+                            HStack(spacing: 4) {
+                                MagpiePulseDot(color: MagpieTheme.green)
+                                Text(String(localized: "已连接"))
+                            }
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(MagpieTheme.greenSoft)
+                            .foregroundStyle(MagpieTheme.green)
+                            .clipShape(Capsule())
+                        } else if !hasKey {
+                            Text(String(localized: "点此输入 Key"))
                                 .font(.system(size: 9, weight: .bold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(MagpieTheme.greenSoft)
-                                .foregroundStyle(MagpieTheme.green)
+                                .background(MagpieTheme.amberSoft)
+                                .foregroundStyle(MagpieTheme.amber)
                                 .clipShape(Capsule())
                         }
                     }
@@ -180,15 +225,20 @@ struct ConnectionListView: View {
                 if app.activeID == connection.id && app.phase == .loading {
                     ProgressView()
                         .controlSize(.small)
+                } else if !hasKey {
+                    Image(systemName: "key.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(MagpieTheme.amber)
                 } else {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(MagpieTheme.textMuted)
                 }
             }
-            .magpieCard(padding: 14)
+            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .magpieLiquidCard(padding: 14, cornerRadius: 20)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MagpieInteractiveCardButtonStyle())
         .contextMenu {
             Button { editing = connection } label: {
                 Label(String(localized: "编辑连接"), systemImage: "pencil")

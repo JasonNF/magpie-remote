@@ -6,7 +6,18 @@ struct LibraryView: View {
     @Environment(AppModel.self) private var app
     @State private var viewModel = LibraryViewModel()
     @State private var piRTK = PiRTKViewModel()
-    @State private var tab: LibraryTab = .skills
+    @State private var tab: LibraryTab = LibraryView.initialTab
+
+    /// DEBUG 联调：`MAGPIE_DEV_LIB_TAB=memory` 直接打开某个 Library 分区。
+    private static var initialTab: LibraryTab {
+        #if DEBUG
+        if let raw = ProcessInfo.processInfo.environment["MAGPIE_DEV_LIB_TAB"],
+           let value = LibraryTab(rawValue: raw) {
+            return value
+        }
+        #endif
+        return .skills
+    }
     @State private var searchText = ""
     @State private var selectedSkill: LibrarySkillDTO?
     @State private var selectedServer: LibraryServerDTO?
@@ -21,6 +32,7 @@ struct LibraryView: View {
         case skills
         case servers
         case instructions
+        case memory
         case pi
         case rtk
         case bili
@@ -32,6 +44,7 @@ struct LibraryView: View {
             case .skills: return String(localized: "技能")
             case .servers: return String(localized: "MCP 服务")
             case .instructions: return String(localized: "指令")
+            case .memory: return String(localized: "记忆")
             case .pi: return "Pi"
             case .rtk: return "RTK"
             case .bili: return "billion"
@@ -43,6 +56,7 @@ struct LibraryView: View {
             case .skills: return "sparkles"
             case .servers: return "server.rack"
             case .instructions: return "text.alignleft"
+            case .memory: return "brain"
             case .pi: return "terminal"
             case .rtk: return "arrow.triangle.branch"
             case .bili: return "rectangle.stack.fill"
@@ -84,8 +98,8 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 18) {
-                    hero
+                VStack(spacing: 16) {
+                    summaryBar
                     tabBar
 
                     if let error = viewModel.errorMessage {
@@ -99,6 +113,8 @@ struct LibraryView: View {
                         serversSection
                     case .instructions:
                         instructionsSection
+                    case .memory:
+                        MemorySection()
                     case .pi:
                         LibraryPiSection()
                             .environment(piRTK)
@@ -112,7 +128,9 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
+                .padding(.bottom, 96)
             }
+            .magpiePageBackground()
             .navigationTitle(String(localized: "Library"))
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -257,34 +275,27 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - 顶部概要
-    private var hero: some View {
-        VStack(spacing: 14) {
-            MagpiePageHeader(
-                title: String(localized: "共享扩展库"),
-                subtitle: String(localized: "一次维护，所有 Agent 同步获得"),
-                icon: "books.vertical.fill",
-                tint: Color(hex: "0ea5e9")
-            )
+    // MARK: - 概览信息栏
+    private var summaryBar: some View {
+        HStack(spacing: 8) {
+            statChip("\(skills.count)", String(localized: "技能"), icon: "sparkles")
+            statChip("\(servers.count)", String(localized: "MCP"), icon: "server.rack")
+            statChip("\(instructionAgentList.filter { $0.on == true }.count)", String(localized: "指令"), icon: "text.alignleft")
 
-            HStack(spacing: 8) {
-                statChip("\(skills.count)", String(localized: "技能"), icon: "sparkles")
-                statChip("\(servers.count)", String(localized: "MCP"), icon: "server.rack")
-                statChip("\(instructionAgentList.filter { $0.on == true }.count)", String(localized: "启用指令"), icon: "text.alignleft")
+            Spacer()
 
-                Spacer()
-
-                if viewModel.isWorking {
-                    ProgressView().controlSize(.small)
-                } else if let action = viewModel.lastAction {
-                    Text(action)
-                        .font(.caption2)
-                        .foregroundStyle(MagpieTheme.green)
-                        .lineLimit(1)
-                }
+            if viewModel.isWorking {
+                ProgressView().controlSize(.small)
+            } else if let action = viewModel.lastAction {
+                Text(action)
+                    .font(.caption2)
+                    .foregroundStyle(MagpieTheme.green)
+                    .lineLimit(1)
             }
         }
-        .magpieCard()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .magpieCard(padding: 0, cornerRadius: 14)
     }
 
     private func statChip(_ value: String, _ title: String, icon: String) -> some View {
@@ -330,21 +341,12 @@ struct LibraryView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(
-                            tab == item
-                                ? AnyShapeStyle(LinearGradient(
-                                    colors: [MagpieTheme.accent, MagpieTheme.accent.opacity(0.72)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ))
-                                : AnyShapeStyle(MagpieTheme.card.opacity(0.6))
-                        )
+                        .background(tab == item ? MagpieTheme.accent : MagpieTheme.card, in: Capsule())
                         .foregroundStyle(tab == item ? .white : MagpieTheme.textSecondary)
-                        .clipShape(Capsule())
                         .overlay(
                             Capsule().stroke(
                                 tab == item ? Color.white.opacity(0.2) : MagpieTheme.borderSubtle,
-                                lineWidth: 0.8
+                                lineWidth: 0.6
                             )
                         )
                     }
@@ -360,6 +362,7 @@ struct LibraryView: View {
         case .skills: return skills.count
         case .servers: return servers.count
         case .instructions: return instructionAgentList.count
+        case .memory: return nil
         case .pi: return piRTK.piView?.pis.count
         case .rtk: return piRTK.rtk?.agents?.count
         case .bili: return piRTK.bili?.agents?.count
@@ -467,7 +470,7 @@ struct LibraryView: View {
                     .foregroundStyle(MagpieTheme.textMuted)
             }
         }
-        .magpieCard(padding: 12)
+        .magpieLiquidCard(padding: 12, cornerRadius: 18)
     }
 
     private func agentChips(_ ids: [String]) -> some View {
@@ -587,7 +590,7 @@ struct LibraryView: View {
                     .foregroundStyle(MagpieTheme.textMuted)
             }
         }
-        .magpieCard(padding: 12)
+        .magpieLiquidCard(padding: 12, cornerRadius: 18)
     }
 
     // MARK: - 指令

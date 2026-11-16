@@ -41,7 +41,7 @@ struct StateDTO: Codable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.agents = try container.decode([AgentDTO].self, forKey: .agents)
+        self.agents = (try? container.decodeIfPresent([AgentDTO].self, forKey: .agents)) ?? []
         self.clients = try? container.decodeIfPresent([ClientDTO].self, forKey: .clients)
         self.profiles = try? container.decodeIfPresent([ProfileDTO].self, forKey: .profiles)
         self.catalog = try? container.decodeIfPresent(String.self, forKey: .catalog)

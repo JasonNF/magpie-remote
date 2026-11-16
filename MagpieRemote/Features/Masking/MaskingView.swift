@@ -29,6 +29,7 @@ struct MaskingView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
+            .magpiePageBackground()
             .navigationTitle(String(localized: "Masking"))
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationBarTitleDisplayMode(.large)
@@ -139,6 +140,7 @@ struct MaskingView: View {
                     guard let client = app.client else { return false }
                     return await viewModel.allow(client: client, placeholder: placeholder)
                 }
+                .presentationDetents([.medium, .large])
             }
         }
     }
@@ -154,11 +156,23 @@ struct MaskingView: View {
             )
 
             HStack(spacing: 10) {
-                MagpieStatusChip(
-                    text: isOn ? String(localized: "防护已开启") : String(localized: "防护已关闭"),
-                    color: isOn ? MagpieTheme.green : MagpieTheme.amber,
-                    icon: isOn ? "checkmark.shield.fill" : "exclamationmark.shield.fill"
-                )
+                if isOn {
+                    HStack(spacing: 4) {
+                        MagpiePulseDot(color: MagpieTheme.green)
+                        Text(String(localized: "防护已开启"))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(MagpieTheme.greenSoft, in: Capsule())
+                    .foregroundStyle(MagpieTheme.green)
+                } else {
+                    MagpieStatusChip(
+                        text: String(localized: "防护已关闭"),
+                        color: MagpieTheme.amber,
+                        icon: "exclamationmark.shield.fill"
+                    )
+                }
 
                 if let since = viewModel.summary?.since, !since.isEmpty {
                     MagpieStatusChip(
@@ -220,7 +234,7 @@ struct MaskingView: View {
                 .font(.caption2)
                 .foregroundStyle(MagpieTheme.textMuted)
         }
-        .magpieCard(padding: 14)
+        .magpieLiquidCard(padding: 14, cornerRadius: 18)
     }
 
     // MARK: - 规则
@@ -661,6 +675,7 @@ private struct MaskingRecordDetailView: View {
                         }
                     }
                 }
+                .presentationDetents([.medium, .large])
             }
         }
     }

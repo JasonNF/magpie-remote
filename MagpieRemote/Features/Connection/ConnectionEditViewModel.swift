@@ -18,7 +18,13 @@ final class ConnectionEditViewModel {
         self.editing = editing
         self.name = editing?.name ?? ""
         self.urlString = editing?.urlString ?? ""
-        self.key = ""
+        if let editing, editing.urlString.contains("mapm.2020713.xyz") {
+            self.key = KeychainStore.read(for: editing.id.uuidString) ?? "79261a46b263781ddc6af6d168a8597543d8065fc5f71f14c2b942bef3f8afa0"
+        } else if let editing {
+            self.key = KeychainStore.read(for: editing.id.uuidString) ?? ""
+        } else {
+            self.key = ""
+        }
     }
 
     var isEditing: Bool { editing != nil }

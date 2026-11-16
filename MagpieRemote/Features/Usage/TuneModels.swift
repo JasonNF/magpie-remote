@@ -44,17 +44,21 @@ struct TuneAgentDTO: Codable, Sendable, Identifiable {
 struct TuneAdviceDTO: Codable, Sendable, Identifiable {
     var knob: String
     var model: String?
+    var why: String?
+    var applied: Bool?
     var setting: JSONValue?
     var compact: JSONValue?
     var ttl: JSONValue?
     var few: Bool?
 
-    enum CodingKeys: String, CodingKey { case knob, model, setting, compact, ttl, few }
+    enum CodingKeys: String, CodingKey { case knob, model, why, applied, setting, compact, ttl, few }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.knob = (try? c.decode(String.self, forKey: .knob)) ?? ""
         self.model = try? c.decodeIfPresent(String.self, forKey: .model)
+        self.why = try? c.decodeIfPresent(String.self, forKey: .why)
+        self.applied = try? c.decodeIfPresent(Bool.self, forKey: .applied)
         self.setting = try? c.decodeIfPresent(JSONValue.self, forKey: .setting)
         self.compact = try? c.decodeIfPresent(JSONValue.self, forKey: .compact)
         self.ttl = try? c.decodeIfPresent(JSONValue.self, forKey: .ttl)

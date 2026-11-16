@@ -5,9 +5,15 @@ import UIKit
 /// 包含连接与密钥、多密钥管理、模型选择、路由/并发、连通性测试与危险操作。
 struct ProviderDetailView: View {
     let providerID: String
+    var viewModel: ProvidersViewModel? = nil
     @Environment(AppModel.self) private var app
-    @Environment(ProvidersViewModel.self) private var viewModel
+    @Environment(ProvidersViewModel.self) private var envViewModel: ProvidersViewModel?
     @Environment(\.dismiss) private var dismiss
+    @State private var fallbackViewModel = ProvidersViewModel()
+
+    private var activeVM: ProvidersViewModel {
+        viewModel ?? envViewModel ?? fallbackViewModel
+    }
 
     @State private var isTesting = false
     @State private var testResponse: ProviderTestResponseDTO?
@@ -101,36 +107,31 @@ struct ProviderDetailView: View {
     @State private var settingsModelImages = false
 
     private var provider: ProviderDTO? {
-        viewModel.providers.first { $0.id == providerID }
+        activeVM.providers.first { $0.id == providerID }
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
                 if let provider {
-                    #if DEBUG
-                    let focusModels = ProcessInfo.processInfo.environment["MAGPIE_DEV_FOCUS"] == "models"
-                    #else
-                    let focusModels = false
-                    #endif
-                    if !focusModels {
-                        header(provider)
-                        quickActions(provider)
-                        connectionSection
-                        keysSection(provider)
-                        if provider.isSubscription {
-                            subscriptionSection(provider)
-                        }
+                    // 每个区块单独擦除类型：把 12 个高度嵌套的 SwiftUI 泛型
+                    // 拼进同一个 TupleView，会让运行时反序列化超长泛型签名并爆栈。
+                    AnyView(header(provider))
+                    AnyView(quickActions(provider))
+                    AnyView(connectionSection)
+                    AnyView(keysSection(provider))
+                    if provider.isSubscription {
+                        AnyView(subscriptionSection(provider))
                     }
-                    modelsSection(provider)
-                    behaviorSection(provider)
-                    routingSection
-                    requestSection(provider)
+                    AnyView(modelsSection(provider))
+                    AnyView(behaviorSection(provider))
+                    AnyView(routingSection)
+                    AnyView(requestSection(provider))
                     if provider.preset?.isEmpty != false {
-                        customEndpointSection
+                        AnyView(customEndpointSection)
                     }
-                    testSection(provider)
-                    dangerSection
+                    AnyView(testSection(provider))
+                    AnyView(dangerSection)
                 } else {
                     ProgressView(String(localized: "读取 Provider…"))
                         .frame(maxWidth: .infinity)
@@ -188,7 +189,12 @@ struct ProviderDetailView: View {
                 .disabled(isSaving || provider == nil)
             }
         }
-        .task { primeIfNeeded() }
+        .task {
+            if let client = app.client, activeVM.providers.isEmpty {
+                await activeVM.load(client: client)
+            }
+            primeIfNeeded()
+        }
         .onAppear { primeIfNeeded() }
         .alert(String(localized: "重命名 Provider ID"), isPresented: $showingRename) {
             TextField("provider-id", text: $renameIDDraft)
@@ -202,12 +208,12 @@ struct ProviderDetailView: View {
                 Task {
                     var request = buildSaveRequest(provider: provider, newID: newID)
                     request.from = provider.id
-                    let ok = await viewModel.save(client: client, request: request)
+                    let ok = await activeVM.save(client: client, request: request)
                     if ok {
                         MagpieHaptics.success()
                         dismiss()
                     } else {
-                        saveError = viewModel.errorMessage ?? String(localized: "重命名失败")
+                        saveError = activeVM.errorMessage ?? String(localized: "重命名失败")
                     }
                 }
             }
@@ -230,7 +236,7 @@ struct ProviderDetailView: View {
                 ProviderAddKeySheet(
                     onAdd: { name, key, protocolName, weight in
                         guard let client = app.client else { return false }
-                        return await viewModel.addKey(
+                        return await activeVM.addKey(
                             client: client,
                             id: provider.id,
                             name: name,
@@ -241,7 +247,7 @@ struct ProviderDetailView: View {
                     },
                     onImport: { keys in
                         guard let client = app.client else { return false }
-                        return await viewModel.importKeys(client: client, id: provider.id, keys: keys)
+                        return await activeVM.importKeys(client: client, id: provider.id, keys: keys)
                     }
                 )
             }
@@ -284,9 +290,9 @@ struct ProviderDetailView: View {
                     concurrency: provider.accountConcurrency?[user.lowercased()] ?? 0
                 ) { cap, weight, concurrency in
                     guard let client = app.client else { return false }
-                    await viewModel.setAccountCap(client: client, id: provider.id, account: user, cap: cap)
-                    await viewModel.setAccountWeight(client: client, id: provider.id, account: user, weight: weight)
-                    await viewModel.setAccountConcurrency(client: client, id: provider.id, account: user, limit: concurrency)
+                    await activeVM.setAccountCap(client: client, id: provider.id, account: user, cap: cap)
+                    await activeVM.setAccountWeight(client: client, id: provider.id, account: user, weight: weight)
+                    await activeVM.setAccountConcurrency(client: client, id: provider.id, account: user, limit: concurrency)
                     return true
                 }
             }
@@ -295,7 +301,7 @@ struct ProviderDetailView: View {
             Button(String(localized: "删除"), role: .destructive) {
                 guard let client = app.client else { return }
                 Task {
-                    _ = await viewModel.delete(client: client, id: providerID)
+                    _ = await activeVM.delete(client: client, id: providerID)
                     dismiss()
                 }
             }
@@ -313,7 +319,7 @@ struct ProviderDetailView: View {
         ) {
             Button(String(localized: "移除"), role: .destructive) {
                 if let key = pendingKeyRemoval, let client = app.client {
-                    Task { _ = await viewModel.removeKey(client: client, id: providerID, ref: key.id) }
+                    Task { _ = await activeVM.removeKey(client: client, id: providerID, ref: key.id) }
                 }
                 pendingKeyRemoval = nil
             }
@@ -367,7 +373,7 @@ struct ProviderDetailView: View {
                     get: { !provider.isOff },
                     set: { on in
                         guard let client = app.client else { return }
-                        Task { await viewModel.toggle(client: client, id: provider.id, turnOn: on) }
+                        Task { await activeVM.toggle(client: client, id: provider.id, turnOn: on) }
                     }
                 ))
                 .labelsHidden()
@@ -603,7 +609,7 @@ struct ProviderDetailView: View {
         ) {
             VStack(spacing: 0) {
                 if let keys = provider.keyList, !keys.isEmpty {
-                    ForEach(Array(keys.enumerated()), id: \.element.id) { index, key in
+                    ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
                         keyRow(key)
                         if index < keys.count - 1 {
                             Divider()
@@ -683,7 +689,7 @@ struct ProviderDetailView: View {
                 set: { on in
                     guard let client = app.client else { return }
                     Task {
-                        _ = await viewModel.toggleKey(
+                        _ = await activeVM.toggleKey(
                             client: client,
                             id: providerID,
                             ref: key.id,
@@ -701,7 +707,7 @@ struct ProviderDetailView: View {
             if key.active != true {
                 Button {
                     guard let client = app.client else { return }
-                    Task { _ = await viewModel.useKey(client: client, id: providerID, ref: key.id) }
+                    Task { _ = await activeVM.useKey(client: client, id: providerID, ref: key.id) }
                 } label: {
                     Label(String(localized: "设为当前密钥"), systemImage: "checkmark.circle")
                 }
@@ -800,7 +806,7 @@ struct ProviderDetailView: View {
                         }
 
                         VStack(spacing: 0) {
-                            ForEach(Array(response.results.enumerated()), id: \.element.id) { index, result in
+                            ForEach(Array(response.results.enumerated()), id: \.offset) { index, result in
                                 testResultRow(result)
                                 if index < response.results.count - 1 {
                                     Divider()
@@ -953,7 +959,7 @@ struct ProviderDetailView: View {
                     alignment: .leading,
                     spacing: 8
                 ) {
-                    ForEach(filtered) { model in
+                    ForEach(Array(filtered.enumerated()), id: \.offset) { index, model in
                         modelChip(model)
                     }
                 }
@@ -1035,7 +1041,7 @@ struct ProviderDetailView: View {
         testRun = run
         Task {
             defer { isTestingModels = false }
-            if let response = await viewModel.testResults(
+            if let response = await activeVM.testResults(
                 client: client,
                 id: providerID,
                 models: [id],
@@ -1043,7 +1049,7 @@ struct ProviderDetailView: View {
             ) {
                 modelTestResponse = response
             } else {
-                testError = viewModel.testResult ?? String(localized: "模型测试失败")
+                testError = activeVM.testResult ?? String(localized: "模型测试失败")
             }
             if testRun == run { testRun = "" }
         }
@@ -1068,19 +1074,19 @@ struct ProviderDetailView: View {
             || (!outputText.isEmpty && Int(outputText) == nil) {
             return false
         }
-        let renamed = await viewModel.renameModel(
+        let renamed = await activeVM.renameModel(
             client: client,
             providerID: providerID,
             model: modelID,
             name: name
         )
-        let effortsSaved = await viewModel.setModelEfforts(
+        let effortsSaved = await activeVM.setModelEfforts(
             client: client,
             id: providerID,
             model: modelID,
             efforts: Array(settingsModelEfforts).sorted()
         )
-        let imagesSaved = await viewModel.setModelImages(
+        let imagesSaved = await activeVM.setModelImages(
             client: client,
             id: providerID,
             model: modelID,
@@ -1131,9 +1137,9 @@ struct ProviderDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
 
-                let logins = provider.accountLogins
+                let logins = uniqueLogins(provider.accountLogins)
                 if logins.count > 1 {
-                    ForEach(logins, id: \.self) { user in
+                    ForEach(Array(logins.enumerated()), id: \.offset) { index, user in
                         Divider().background(MagpieTheme.borderSubtle).padding(.leading, 54)
                         HStack(spacing: 10) {
                             Image(systemName: user == provider.accountUser ? "person.crop.circle.fill.badge.checkmark" : "person.crop.circle")
@@ -1148,7 +1154,7 @@ struct ProviderDetailView: View {
                                 Button(String(localized: "切换")) {
                                     guard let client = app.client else { return }
                                     Task {
-                                        await viewModel.switchLogin(
+                                        await activeVM.switchLogin(
                                             client: client,
                                             agent: provider.accountAgent ?? provider.preset ?? provider.id,
                                             user: user
@@ -1191,7 +1197,7 @@ struct ProviderDetailView: View {
                         set: { on in
                             guard let client = app.client else { return }
                             Task {
-                                await viewModel.setKeepLogin(
+                                await activeVM.setKeepLogin(
                                     client: client,
                                     id: provider.id,
                                     on: on,
@@ -1215,7 +1221,7 @@ struct ProviderDetailView: View {
                         Button(String(localized: "应用")) {
                             guard let client = app.client else { return }
                             Task {
-                                await viewModel.setKeepLogin(
+                                await activeVM.setKeepLogin(
                                     client: client,
                                     id: provider.id,
                                     on: true,
@@ -1242,7 +1248,7 @@ struct ProviderDetailView: View {
                         get: { provider.switchOnly ?? false },
                         set: { on in
                             guard let client = app.client else { return }
-                            Task { await viewModel.setSwitchOnly(client: client, id: provider.id, on: on) }
+                            Task { await activeVM.setSwitchOnly(client: client, id: provider.id, on: on) }
                         }
                     )
                 )
@@ -1258,7 +1264,7 @@ struct ProviderDetailView: View {
                         get: { provider.restartApp ?? false },
                         set: { on in
                             guard let client = app.client else { return }
-                            Task { await viewModel.setRestartApp(client: client, id: provider.id, on: on) }
+                            Task { await activeVM.setRestartApp(client: client, id: provider.id, on: on) }
                         }
                     )
                 )
@@ -1327,8 +1333,12 @@ struct ProviderDetailView: View {
                             .foregroundStyle(MagpieTheme.textMuted)
                     }
                     Spacer(minLength: 8)
-                    Stepper(value: $priceRateDraft, in: 0...2, step: 0.05) {
-                        Text(priceRateDraft <= 0 ? String(localized: "原价") : String(format: "×%.2f", priceRateDraft))
+                    let safePrice = Binding<Double>(
+                        get: { min(max(priceRateDraft, 0), 100) },
+                        set: { priceRateDraft = $0 }
+                    )
+                    Stepper(value: safePrice, in: 0...100, step: 0.05) {
+                        Text(safePrice.wrappedValue <= 0 ? String(localized: "原价") : String(format: "×%.2f", safePrice.wrappedValue))
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundStyle(MagpieTheme.textSecondary)
                             .frame(minWidth: 44, alignment: .trailing)
@@ -1625,7 +1635,7 @@ struct ProviderDetailView: View {
                     icon: "speedometer",
                     tint: MagpieTheme.accent,
                     value: $maxConcurrencyDraft,
-                    range: 0...64,
+                    range: 0...1000,
                     step: 1
                 )
 
@@ -1637,7 +1647,7 @@ struct ProviderDetailView: View {
                     icon: "list.bullet",
                     tint: MagpieTheme.cyan,
                     value: $queueLimitDraft,
-                    range: 0...1000,
+                    range: 0...10000,
                     step: 10
                 )
 
@@ -1649,7 +1659,7 @@ struct ProviderDetailView: View {
                     icon: "hourglass",
                     tint: MagpieTheme.amber,
                     value: $queueWaitDraft,
-                    range: 0...600,
+                    range: 0...3600,
                     step: 10
                 )
 
@@ -1661,7 +1671,7 @@ struct ProviderDetailView: View {
                     icon: "gauge.with.dots.needle.50percent",
                     tint: MagpieTheme.purple,
                     value: $maxRPMDraft,
-                    range: 0...1000,
+                    range: 0...10000,
                     step: 10
                 )
             }
@@ -1704,7 +1714,8 @@ struct ProviderDetailView: View {
                     }
                 }
 
-                if provider.accountLogins.count > 1 {
+                let loginOptions = uniqueLogins(provider.accountLogins)
+                if loginOptions.count > 1 {
                     HStack(spacing: 8) {
                         Image(systemName: "person.2.fill")
                             .font(.system(size: 11, weight: .semibold))
@@ -1715,7 +1726,7 @@ struct ProviderDetailView: View {
                         Spacer()
                         Picker("", selection: $testAccount) {
                             Text(String(localized: "全部账号")).tag("")
-                            ForEach(provider.accountLogins, id: \.self) { user in
+                            ForEach(Array(loginOptions.enumerated()), id: \.offset) { _, user in
                                 Text(user).tag(user)
                             }
                         }
@@ -1743,7 +1754,7 @@ struct ProviderDetailView: View {
                     }
 
                     VStack(spacing: 0) {
-                        ForEach(Array(response.results.enumerated()), id: \.element.id) { index, result in
+                        ForEach(Array(response.results.enumerated()), id: \.offset) { index, result in
                             testResultRow(result)
                             if index < response.results.count - 1 {
                                 Divider()
@@ -1779,7 +1790,7 @@ struct ProviderDetailView: View {
                 Spacer(minLength: 4)
 
                 if result.succeeded {
-                    Text("\(result.ms)ms")
+                    Text("\(Int(result.ms ?? 0))ms")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(MagpieTheme.green)
                 } else if let status = result.status, status > 0 {
@@ -1948,8 +1959,12 @@ struct ProviderDetailView: View {
                     .foregroundStyle(MagpieTheme.textMuted)
             }
             Spacer(minLength: 8)
-            Stepper(value: value, in: range, step: step) {
-                Text(value.wrappedValue == 0 ? String(localized: "不限") : "\(value.wrappedValue)")
+            let safeVal = Binding<Int>(
+                get: { min(max(value.wrappedValue, range.lowerBound), range.upperBound) },
+                set: { value.wrappedValue = $0 }
+            )
+            Stepper(value: safeVal, in: range, step: step) {
+                Text(safeVal.wrappedValue == 0 ? String(localized: "不限") : "\(safeVal.wrappedValue)")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(MagpieTheme.textSecondary)
                     .frame(minWidth: 36, alignment: .trailing)
@@ -2060,15 +2075,15 @@ struct ProviderDetailView: View {
         isSaving = true
 
         Task {
-            let ok = await viewModel.save(client: client, request: request)
+            let ok = await activeVM.save(client: client, request: request)
             if ok {
                 // 这两个开关在服务端由独立动作写入，保存请求不会覆盖它们。
-                await viewModel.setUseFirst(client: client, id: provider.id, on: useFirstDraft)
-                await viewModel.setStandIn(client: client, id: provider.id, noStandIn: noStandInDraft)
+                await activeVM.setUseFirst(client: client, id: provider.id, on: useFirstDraft)
+                await activeVM.setStandIn(client: client, id: provider.id, noStandIn: noStandInDraft)
                 prime(force: true)
                 MagpieHaptics.success()
             } else {
-                saveError = viewModel.errorMessage ?? String(localized: "保存失败")
+                saveError = activeVM.errorMessage ?? String(localized: "保存失败")
             }
             isSaving = false
         }
@@ -2085,11 +2100,11 @@ struct ProviderDetailView: View {
         request.key = nil
         request.name = provider.name + " copy"
         Task {
-            if await viewModel.save(client: client, request: request) {
+            if await activeVM.save(client: client, request: request) {
                 MagpieHaptics.success()
                 dismiss()
             } else {
-                saveError = viewModel.errorMessage ?? String(localized: "复制失败")
+                saveError = activeVM.errorMessage ?? String(localized: "复制失败")
             }
         }
     }
@@ -2186,6 +2201,12 @@ struct ProviderDetailView: View {
         return text.isEmpty ? nil : text
     }
 
+    /// 服务端账号列表可能包含重复账号；Picker 的 tag 与 ForEach 标识都必须唯一。
+    private func uniqueLogins(_ logins: [String]) -> [String] {
+        var seen = Set<String>()
+        return logins.filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+    }
+
     private func runTest(id: String) {
         guard let client = app.client else { return }
         isTesting = true
@@ -2195,7 +2216,7 @@ struct ProviderDetailView: View {
         testRun = run
         Task {
             defer { isTesting = false }
-            if let response = await viewModel.testResults(
+            if let response = await activeVM.testResults(
                 client: client,
                 id: id,
                 account: testAccount.isEmpty ? nil : testAccount,
@@ -2203,7 +2224,7 @@ struct ProviderDetailView: View {
             ) {
                 testResponse = response
             } else {
-                testError = viewModel.testResult ?? String(localized: "测试失败")
+                testError = activeVM.testResult ?? String(localized: "测试失败")
             }
             if testRun == run { testRun = "" }
         }
@@ -2211,7 +2232,7 @@ struct ProviderDetailView: View {
 
     private func stopTest() {
         guard let client = app.client, !testRun.isEmpty else { return }
-        Task { await viewModel.stopTest(client: client, run: testRun) }
+        Task { await activeVM.stopTest(client: client, run: testRun) }
     }
 
     // MARK: - 获取模型
@@ -2220,7 +2241,7 @@ struct ProviderDetailView: View {
         isRefreshingModels = true
         refreshMessage = nil
         Task {
-            let response = await viewModel.refreshModels(
+            let response = await activeVM.refreshModels(
                 client: client,
                 id: provider.id,
                 key: keyDraft.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -2238,7 +2259,7 @@ struct ProviderDetailView: View {
                 }
                 refreshMessage = message
 
-                if let refreshed = viewModel.providers.first(where: { $0.id == provider.id }) {
+                if let refreshed = activeVM.providers.first(where: { $0.id == provider.id }) {
                     let all = (refreshed.models ?? []).map(\.id)
                     let chosen = refreshed.chosen ?? []
                     selectedModels = Set(chosen.isEmpty ? all : chosen)
@@ -2248,7 +2269,7 @@ struct ProviderDetailView: View {
                 }
                 MagpieHaptics.success()
             } else {
-                refreshMessage = viewModel.errorMessage ?? String(localized: "获取模型失败")
+                refreshMessage = activeVM.errorMessage ?? String(localized: "获取模型失败")
             }
         }
     }
@@ -2257,11 +2278,11 @@ struct ProviderDetailView: View {
     private func forgetModelList() {
         guard let client = app.client else { return }
         Task {
-            if await viewModel.forgetModelList(client: client, id: providerID) {
+            if await activeVM.forgetModelList(client: client, id: providerID) {
                 refreshMessage = String(localized: "已忘记厂商列表，下次刷新会重新拉取。")
                 MagpieHaptics.success()
             } else {
-                saveError = viewModel.errorMessage ?? String(localized: "操作失败")
+                saveError = activeVM.errorMessage ?? String(localized: "操作失败")
             }
         }
     }
@@ -2270,11 +2291,11 @@ struct ProviderDetailView: View {
     private func revealKey() {
         guard let client = app.client else { return }
         Task {
-            if let key = await viewModel.revealKey(client: client, id: providerID) {
+            if let key = await activeVM.revealKey(client: client, id: providerID) {
                 revealedKey = key
                 showingRevealedKey = true
             } else {
-                saveError = viewModel.errorMessage ?? String(localized: "读取 Key 失败")
+                saveError = activeVM.errorMessage ?? String(localized: "读取 Key 失败")
             }
         }
     }
@@ -2285,7 +2306,7 @@ struct ProviderDetailView: View {
         isCheckingBalance = true
         balanceMessage = nil
         Task {
-            let response = await viewModel.checkBalance(client: client, id: provider.id)
+            let response = await activeVM.checkBalance(client: client, id: provider.id)
             isCheckingBalance = false
             if let response {
                 if let amount = response.amount, !amount.isEmpty, response.ok != false {
@@ -2298,7 +2319,7 @@ struct ProviderDetailView: View {
                     balanceMessage = String(localized: "余额查询完成")
                 }
             } else {
-                balanceMessage = viewModel.errorMessage ?? String(localized: "余额查询失败")
+                balanceMessage = activeVM.errorMessage ?? String(localized: "余额查询失败")
             }
         }
     }
@@ -2323,7 +2344,7 @@ struct ProviderDetailView: View {
         testRun = run
         Task {
             defer { isTestingModels = false }
-            if let response = await viewModel.testResults(
+            if let response = await activeVM.testResults(
                 client: client,
                 id: providerID,
                 models: models,
@@ -2331,7 +2352,7 @@ struct ProviderDetailView: View {
             ) {
                 modelTestResponse = response
             } else {
-                testError = viewModel.testResult ?? String(localized: "模型测试失败")
+                testError = activeVM.testResult ?? String(localized: "模型测试失败")
             }
             if testRun == run { testRun = "" }
         }
@@ -2385,7 +2406,7 @@ private struct ProviderModelSettingsSheet: View {
                     Section {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
-                                ForEach(availableEfforts, id: \.self) { level in
+                                ForEach(Array(availableEfforts.enumerated()), id: \.offset) { _, level in
                                     Button {
                                         toggleEffort(level)
                                     } label: {
@@ -2650,7 +2671,7 @@ private struct ProviderModelsSheet: View {
                 }
 
                 Section {
-                    ForEach(filtered) { model in
+                    ForEach(Array(filtered.enumerated()), id: \.offset) { _, model in
                         Button {
                             if selected.contains(model.id) {
                                 selected.remove(model.id)

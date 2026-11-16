@@ -20,6 +20,7 @@ struct GatewayView: View {
     @State private var connectModel = ""
     @State private var connectExpanded = true
     @State private var showingAllModels = false
+    @State private var isCopiedSnippet = false
 
     private var filteredKeys: [GatewayKeyDTO] {
         if searchText.isEmpty { return viewModel.keys }
@@ -189,12 +190,22 @@ struct GatewayView: View {
                         Text(String(localized: "本地网关"))
                             .font(.headline)
                             .foregroundStyle(MagpieTheme.textPrimary)
-                        MagpieStatusChip(
-                            text: viewModel.gateway?.running == true
-                                ? String(localized: "运行中")
-                                : String(localized: "未运行"),
-                            color: viewModel.gateway?.running == true ? MagpieTheme.green : MagpieTheme.amber
-                        )
+                        if viewModel.gateway?.running == true {
+                            HStack(spacing: 4) {
+                                MagpiePulseDot(color: MagpieTheme.green)
+                                Text(String(localized: "运行中"))
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3.5)
+                            .background(MagpieTheme.greenSoft, in: Capsule())
+                            .foregroundStyle(MagpieTheme.green)
+                        } else {
+                            MagpieStatusChip(
+                                text: String(localized: "未运行"),
+                                color: MagpieTheme.amber
+                            )
+                        }
                         if viewModel.gateway?.paused == true {
                             MagpieStatusChip(text: String(localized: "已暂停"), color: MagpieTheme.amber)
                         }
@@ -356,13 +367,22 @@ struct GatewayView: View {
                         .foregroundStyle(MagpieTheme.textMuted)
                     Spacer()
                     Button {
-                        copy(connectSnippet)
+                        UIPasteboard.general.string = connectSnippet
+                        withAnimation(.snappy(duration: 0.25)) { isCopiedSnippet = true }
+                        MagpieHaptics.success()
+                        Task {
+                            try? await Task.sleep(nanoseconds: 1_800_000_000)
+                            withAnimation(.snappy(duration: 0.25)) { isCopiedSnippet = false }
+                        }
                     } label: {
-                        Label(String(localized: "复制"), systemImage: "doc.on.doc")
-                            .font(.caption.weight(.semibold))
+                        Label(
+                            isCopiedSnippet ? String(localized: "已复制") : String(localized: "复制"),
+                            systemImage: isCopiedSnippet ? "checkmark" : "doc.on.doc"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isCopiedSnippet ? MagpieTheme.green : MagpieTheme.accent)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(MagpieTheme.accent)
                 }
             }
         }
@@ -778,6 +798,7 @@ private struct SecretRevealSheet: View {
                 }
             }
         }
+        .presentationDetents([.medium])
     }
 }
 
@@ -986,6 +1007,7 @@ private struct GatewayLimitEditorSheet: View {
                 Text(String(localized: "该 Key 在本窗口已用的 tokens 与成本会清零，之后重新计数。"))
             }
         }
+        .presentationDetents([.medium, .large])
     }
 
     @ViewBuilder
@@ -1394,12 +1416,15 @@ private struct GatewayKeyCard: View {
 
             Toggle("", isOn: Binding(
                 get: { !key.isOff },
-                set: onToggle
+                set: { value in
+                    MagpieHaptics.light()
+                    onToggle(value)
+                }
             ))
             .labelsHidden()
             .tint(MagpieTheme.green)
         }
-        .magpieCard(padding: 14, cornerRadius: 18)
+        .magpieLiquidCard(padding: 14, cornerRadius: 20)
         .contextMenu {
             Button(action: onCopy) {
                 Label(String(localized: "查看并复制 Key"), systemImage: "doc.on.doc")
@@ -1498,6 +1523,7 @@ private struct GatewayCallSheet: View {
                 isLoading = false
             }
         }
+        .presentationDetents([.medium, .large])
     }
 
     private func bodyCard(_ title: String, text: String?, truncated: Bool?) -> some View {
@@ -1591,5 +1617,6 @@ private struct GatewayModelsSheet: View {
                 }
             }
         }
+        .presentationDetents([.medium, .large])
     }
 }

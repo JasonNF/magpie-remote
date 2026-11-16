@@ -34,7 +34,7 @@ struct ProvidersView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    hero
+                    summaryBar
 
                     if let error = viewModel.errorMessage {
                         HStack(spacing: 8) {
@@ -54,19 +54,17 @@ struct ProvidersView: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(MagpieTheme.textMuted)
 
-                            MagpieGlassGroup(spacing: 10) {
-                                LazyVStack(spacing: 10) {
-                                    ForEach(activeProviders) { provider in
-                                        NavigationLink(value: provider.id) {
-                                            ProviderCard(provider: provider) { turnOn in
-                                                toggleProvider(provider.id, turnOn: turnOn)
-                                            }
+                            LazyVStack(spacing: 10) {
+                                ForEach(activeProviders) { provider in
+                                    NavigationLink(value: provider.id) {
+                                        ProviderCard(provider: provider) { turnOn in
+                                            toggleProvider(provider.id, turnOn: turnOn)
                                         }
-                                        .buttonStyle(.plain)
-                                        .matchedTransitionSource(id: provider.id, in: zoomNamespace)
-                                        .contextMenu {
-                                            providerContextMenu(provider)
-                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .matchedTransitionSource(id: provider.id, in: zoomNamespace)
+                                    .contextMenu {
+                                        providerContextMenu(provider)
                                     }
                                 }
                             }
@@ -138,6 +136,7 @@ struct ProvidersView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .padding(.bottom, 96)
                 .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.providers.map(\.id))
             }
             .magpiePageBackground()
@@ -145,7 +144,8 @@ struct ProvidersView: View {
             .navigationTitle(String(localized: "Providers"))
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationDestination(for: String.self) { id in
-                ProviderDetailView(providerID: id)
+                ProviderDetailView(providerID: id, viewModel: viewModel)
+                    .environment(viewModel)
                     .navigationTransition(.zoom(sourceID: id, in: zoomNamespace))
             }
             .toolbar {
@@ -259,49 +259,25 @@ struct ProvidersView: View {
         }
     }
 
-    // MARK: - 头部
-    private var hero: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [MagpieTheme.accent, Color(hex: "8b5cf6").opacity(0.78)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 46, height: 46)
-                    .shadow(color: MagpieTheme.accent.opacity(0.32), radius: 12, x: 0, y: 6)
-                Image(systemName: "key.radiowaves.forward.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(String(localized: "模型提供商"))
-                    .font(.system(size: 21, weight: .bold, design: .rounded))
+    // MARK: - 概览信息栏
+    private var summaryBar: some View {
+        HStack {
+            HStack(spacing: 6) {
+                Circle().fill(MagpieTheme.green).frame(width: 6, height: 6)
+                Text(String(localized: "\(viewModel.providers.filter { !$0.isOff }.count) 启用"))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(MagpieTheme.textPrimary)
-                Text(String(localized: "Key、端点、模型与故障转移来源"))
-                    .font(.caption)
-                    .foregroundStyle(MagpieTheme.textSecondary)
             }
 
-            Spacer(minLength: 6)
+            Spacer()
 
-            VStack(alignment: .trailing, spacing: 5) {
-                HStack(spacing: 4) {
-                    Circle().fill(MagpieTheme.green).frame(width: 5, height: 5)
-                    Text(String(localized: "\(viewModel.providers.filter { !$0.isOff }.count) 启用"))
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(MagpieTheme.green)
-                }
-                Text(String(localized: "\(viewModel.providers.reduce(0) { $0 + ($1.models?.count ?? 0) }) 模型"))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(MagpieTheme.textMuted)
-            }
+            Text(String(localized: "共 \(viewModel.providers.reduce(0) { $0 + ($1.models?.count ?? 0) }) 个可用模型"))
+                .font(.caption)
+                .foregroundStyle(MagpieTheme.textMuted)
         }
-        .magpieCard()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .magpieCard(padding: 0, cornerRadius: 14)
     }
 }
 
@@ -442,9 +418,7 @@ private struct ProviderCard: View {
                             .foregroundStyle(MagpieTheme.textMuted)
                             .clipShape(Capsule())
                     } else if provider.ready == true {
-                        Circle()
-                            .fill(MagpieTheme.green)
-                            .frame(width: 5, height: 5)
+                        MagpiePulseDot(color: MagpieTheme.green)
                     }
 
                     if provider.unlisted == true {
@@ -489,6 +463,7 @@ private struct ProviderCard: View {
 
             // 快捷开关
             Button {
+                MagpieHaptics.light()
                 onToggle(provider.isOff)
             } label: {
                 Image(systemName: provider.isOff ? "power.circle" : "power.circle.fill")
@@ -501,6 +476,6 @@ private struct ProviderCard: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(MagpieTheme.textMuted)
         }
-        .magpieCard(padding: 14, cornerRadius: 18)
+        .magpieLiquidCard(padding: 14, cornerRadius: 18)
     }
 }

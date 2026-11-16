@@ -33,67 +33,16 @@ struct MagpieNavigationContainer<Content: View>: View {
     }
 }
 
-// MARK: - 极光背景
-/// 全局流动极光背景：低饱和的品牌色光晕在页面背后缓慢漂移，
-/// 为原生组件提供层次感与“活”的观感，同时尊重「减弱动态效果」。
-/// 性能优先：静态光晕 + 一次性的柔和位移动画，避免常驻 repeatForever 拖慢 GPU。
+// MARK: - 原生系统页面背景（纯净 Apple 设计风格）
+/// 遵循 iOS 26 / iOS 27 原生规范，采用系统 Grouped 语义底色，
+/// 提供零 GPU 滤镜重绘开销与 120Hz 极致流畅度。
 struct MagpieAuroraBackground: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var drift = false
-
     var body: some View {
-        Group {
-            if reduceMotion {
-                MagpieTheme.background
-            } else {
-                aurora
-            }
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            guard !reduceMotion else { return }
-            // 一次性到位，不再 repeatForever：保留层次感并大幅降低持续成本
-            withAnimation(.easeInOut(duration: 8)) {
-                drift = true
-            }
-        }
+        MagpieTheme.background
+            .ignoresSafeArea()
     }
 
-    private var aurora: some View {
-        ZStack {
-            MagpieTheme.background
-
-            GeometryReader { proxy in
-                let w = proxy.size.width
-                let h = proxy.size.height
-
-                Circle()
-                    .fill(MagpieTheme.accent.opacity(colorScheme == .dark ? 0.26 : 0.15))
-                    .frame(width: w * 1.05)
-                    .blur(radius: 90)
-                    .offset(x: drift ? -w * 0.30 : w * 0.12,
-                            y: drift ? -h * 0.18 : -h * 0.04)
-
-                Circle()
-                    .fill(MagpieTheme.cyan.opacity(colorScheme == .dark ? 0.18 : 0.10))
-                    .frame(width: w * 0.9)
-                    .blur(radius: 100)
-                    .offset(x: drift ? w * 0.30 : -w * 0.28,
-                            y: drift ? h * 0.10 : h * 0.28)
-
-                Circle()
-                    .fill(Color(hex: "ec4899").opacity(colorScheme == .dark ? 0.12 : 0.07))
-                    .frame(width: w * 0.75)
-                    .blur(radius: 110)
-                    .offset(x: drift ? -w * 0.08 : w * 0.34,
-                            y: drift ? h * 0.36 : h * 0.16)
-            }
-            .allowsHitTesting(false)
-        }
-    }
-
-    /// Reduce Motion 下使用纯色背景，彻底省去 blur 开销。
+    /// 统一纯色背景
     static func safeBackground() -> some View {
         MagpieTheme.background
     }
@@ -101,14 +50,14 @@ struct MagpieAuroraBackground: View {
 
 // MARK: - 页面背景
 extension View {
-    /// 以极光背景替换纯色页面底色；Reduce Motion 时由背景自身退回纯色。
+    /// 纯净 Apple 系统页面底色，保证背景无色偏且性能极致。
     func magpiePageBackground() -> some View {
         background(MagpieAuroraBackground())
     }
 }
 
 // MARK: - 标题区
-/// 统一的页面头：渐变图标徽章 + 标题 + 一句说明。
+/// 统一的页面头：精美 Apple 规范图标徽章 + 标题 + 一句说明。
 struct MagpiePageHeader: View {
     let title: String
     var subtitle: String? = nil
@@ -118,25 +67,18 @@ struct MagpiePageHeader: View {
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.opacity(0.95), tint.opacity(0.55)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 46, height: 46)
-                    .shadow(color: tint.opacity(0.35), radius: 12, x: 0, y: 6)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(tint.gradient)
+                    .frame(width: 42, height: 42)
 
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(.white)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(MagpieTheme.textPrimary)
 
                 if let subtitle {
@@ -161,7 +103,7 @@ struct MagpieSectionLabel: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title.uppercased())
                 .font(.system(size: 11, weight: .semibold))
-                .tracking(0.8)
+                .tracking(0.6)
                 .foregroundStyle(MagpieTheme.textMuted)
 
             if let detail {
@@ -181,7 +123,7 @@ struct MagpieSectionLabel: View {
 struct MagpieGradientNumber: View {
     let text: String
     var tint: Color = MagpieTheme.accent
-    var size: CGFloat = 26
+    var size: CGFloat = 24
 
     var body: some View {
         Text(text)
@@ -189,13 +131,7 @@ struct MagpieGradientNumber: View {
             .monospacedDigit()
             .contentTransition(.numericText())
             .animation(.snappy(duration: 0.35), value: text)
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [tint, tint.opacity(0.62)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+            .foregroundStyle(tint.gradient)
             .minimumScaleFactor(0.6)
             .lineLimit(1)
     }
@@ -218,14 +154,12 @@ struct MagpieStatusChip: View {
                     .frame(width: 5, height: 5)
             }
             Text(text)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(color.opacity(0.13))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3.5)
+        .background(color.opacity(0.12), in: Capsule())
         .foregroundStyle(color)
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(color.opacity(0.18), lineWidth: 0.5))
     }
 }
 
@@ -240,7 +174,6 @@ struct MagpiePrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
             .background(tint.gradient, in: Capsule())
-            .magpieLiquidSurface(cornerRadius: 999, tint: tint, interactive: true)
             .opacity(configuration.isPressed ? 0.86 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1, anchor: .center)
             .animation(.spring(response: 0.26, dampingFraction: 0.7), value: configuration.isPressed)
