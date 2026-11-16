@@ -38,8 +38,8 @@
 graph TD
     subgraph Client [Magpie Remote - 原生客户端]
         App[RootView 核心调度器]
-        App --> TabBar[iPhone: Liquid Glass 浮动胶囊底栏]
-        App --> SideBar[iPad: 多区段自适应侧边栏]
+        App --> TabBar["iPhone: Liquid Glass 浮动胶囊底栏"]
+        App --> SideBar["iPad: 多区段自适应侧边栏"]
         TabBar --> Modules
         SideBar --> Modules
         
@@ -62,7 +62,7 @@ graph TD
         GatewayAPI[magpie web /api/*]
     end
 
-    Modules -- 原生安全 Keychain 鉴权 / HTTPS -- GatewayAPI
+    Modules -- "原生安全 Keychain 鉴权 / HTTPS" --> GatewayAPI
 ```
 
 ### iPhone 浮动底栏与 iPad 侧栏体验
