@@ -22482,6 +22482,78 @@
           }
         }
       }
+    },
+    "客户端证书（mTLS）" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Client certificate (mTLS)" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "クライアント証明書 (mTLS)" } }
+      }
+    },
+    "若服务端在设置中开启了「要求客户端证书」，导入 magpie 签发的三份文件后即可连接。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "When the server has “Require a client certificate” enabled, import the three files issued by magpie to connect." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバーで「クライアント証明書を要求」が有効な場合、magpie が発行した 3 つのファイルを読み込んで接続できます。" } }
+      }
+    },
+    "导入" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Import" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "読み込む" } }
+      }
+    },
+    "重新导入" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Re-import" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "再読み込み" } }
+      }
+    },
+    "移除客户端证书" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remove client certificate" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "クライアント証明書を削除" } }
+      }
+    },
+    "客户端证书需要 client.pem、client-key.pem 和 ca.pem 三份文件，请全部导入。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The client certificate needs all three files: client.pem, client-key.pem and ca.pem. Please import them all." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "クライアント証明書には client.pem、client-key.pem、ca.pem の 3 ファイルが必要です。すべて読み込んでください。" } }
+      }
+    },
+    "证书文件不是有效的文本。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The certificate file is not valid text." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "証明書ファイルが有効なテキストではありません。" } }
+      }
+    },
+    "无法读取证书文件。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not read the certificate file." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "証明書ファイルを読み込めませんでした。" } }
+      }
+    },
+    "无法将客户端证书与私钥配对，请确认三者来自同一次签发。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not match the client certificate with its private key. Make sure all three come from the same issuance." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "クライアント証明書と秘密鍵を対応付けできませんでした。3 つが同じ発行のものか確認してください。" } }
+      }
+    },
+    "CA 证书无效。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The CA certificate is invalid." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "CA 証明書が無効です。" } }
+      }
+    },
+    "%@ 不是有效的 PEM 证书文件。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ is not a valid PEM certificate file." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%@ は有効な PEM 証明書ファイルではありません。" } }
+      }
+    },
+    "客户端私钥导入失败（%lld）。" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Failed to import the client private key (%lld)." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "クライアント秘密鍵の読み込みに失敗しました（%lld）。" } }
+      }
     }
   },
   "version" : "1.0"

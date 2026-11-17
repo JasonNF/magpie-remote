@@ -57,7 +57,19 @@ final class AppModel {
         activeID = id
         activeName = name
         activeURL = url
-        let client = MagpieAPIClient(baseURL: url, key: key)
+
+        var tlsMaterial: ClientTLSMaterial?
+        if let bundle = ClientCertificateStore.load(for: id.uuidString) {
+            do {
+                tlsMaterial = try ClientCertificateStore.makeTLSMaterial(from: bundle, account: id.uuidString)
+            } catch {
+                phase = .error
+                errorMessage = (error as? ClientCertificateError)?.errorDescription ?? error.localizedDescription
+                return
+            }
+        }
+
+        let client = MagpieAPIClient(baseURL: url, key: key, tlsMaterial: tlsMaterial)
         self.client = client
         phase = .loading
         errorMessage = nil

@@ -11,7 +11,8 @@ final class MagpieAPIClient: Sendable {
     private let decoder: JSONDecoder
     private static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1 MagpieRemote/1.0"
 
-    init(baseURL: URL, key: String) {
+    /// `tlsMaterial` 非空时，会话用专用 delegate 出示客户端证书并以 CA 校验服务端。
+    init(baseURL: URL, key: String, tlsMaterial: ClientTLSMaterial? = nil) {
         self.baseURL = baseURL
         self.key = key
         let config = URLSessionConfiguration.default
@@ -20,7 +21,12 @@ final class MagpieAPIClient: Sendable {
         config.httpCookieAcceptPolicy = .always
         config.timeoutIntervalForRequest = 30
         config.waitsForConnectivity = false
-        self.session = URLSession(configuration: config)
+        if let tlsMaterial {
+            let delegate = MagpieTLSSessionDelegate(material: tlsMaterial)
+            self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        } else {
+            self.session = URLSession(configuration: config)
+        }
         self.decoder = JSONDecoder()
     }
 
