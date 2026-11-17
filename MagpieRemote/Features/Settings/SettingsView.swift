@@ -218,7 +218,7 @@ struct SettingsView: View {
                 icon: "globe",
                 tint: MagpieTheme.cyan,
                 selection: stringBinding(key: "lang", fallback: "system"),
-                options: [("system", String(localized: "跟随系统")), ("zh", "简体中文"), ("en", "English")]
+                options: [("system", String(localized: "跟随系统")), ("zh", "简体中文"), ("zh-TW", "繁體中文"), ("en", "English")]
             )
             rowDivider
             intPickerRow(
