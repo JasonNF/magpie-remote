@@ -43,13 +43,7 @@ final class AppModel {
             errorMessage = APIError.invalidURL.errorDescription
             return
         }
-        var key = KeychainStore.read(for: id.uuidString)
-        if (key == nil || key?.isEmpty == true), urlString.contains("mapm.2020713.xyz") {
-            let defaultKey = "79261a46b263781ddc6af6d168a8597543d8065fc5f71f14c2b942bef3f8afa0"
-            KeychainStore.save(defaultKey, for: id.uuidString)
-            key = defaultKey
-        }
-        guard let key, !key.isEmpty else {
+        guard let key = KeychainStore.read(for: id.uuidString), !key.isEmpty else {
             phase = .error
             errorMessage = String(localized: "缺少 Web Key，请编辑该连接。")
             return

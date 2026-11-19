@@ -223,14 +223,50 @@ final class ModelDecodingTests: XCTestCase {
     }
 
     func testExtractCleanURLAndKey() {
-        let input = "https://mapm.2020713.xyz/?k=79261a46b263781ddc6af6d168a8597543d8065fc5f71f14c2b942bef3f8afa0"
+        let input = "https://magpie.example.invalid/?k=fixture-web-key"
         let (clean, key) = ConnectionEditViewModel.extractCleanURLAndKey(from: input)
-        XCTAssertEqual(clean, "https://mapm.2020713.xyz/")
-        XCTAssertEqual(key, "79261a46b263781ddc6af6d168a8597543d8065fc5f71f14c2b942bef3f8afa0")
+        XCTAssertEqual(clean, "https://magpie.example.invalid/")
+        XCTAssertEqual(key, "fixture-web-key")
 
         let cleanOnly = "http://192.168.1.50:3426"
         let (resURL, resKey) = ConnectionEditViewModel.extractCleanURLAndKey(from: cleanOnly)
         XCTAssertEqual(resURL, "http://192.168.1.50:3426")
         XCTAssertNil(resKey)
+    }
+
+    func testRoutingFollowsAttemptedModelAcrossFallback() throws {
+        func route(tries: String, done: Bool = false) throws -> GatewayRouteDTO {
+            let json = """
+            {
+              "id": 30, "done": \(done), "ms": 420, "contentAt": 1000,
+              "order": [
+                { "id": "shared-account", "model": "primary" },
+                { "id": "shared-account", "model": "backup", "fallback": true }
+              ],
+              "tries": [\(tries)]
+            }
+            """
+            return try JSONDecoder().decode(GatewayRouteDTO.self, from: Data(json.utf8))
+        }
+
+        let waiting = try route(tries: "")
+        XCTAssertNil(waiting.focusedAccountIndex)
+        XCTAssertFalse(waiting.isRerouted)
+
+        let primary = #"{"id":"shared-account","model":"primary","done":false}"#
+        XCTAssertEqual(try route(tries: primary).focusedAccountIndex, 0)
+
+        let failed = #"{"id":"shared-account","model":"primary","done":true,"status":429,"fail":"quota"}"#
+        let backup = #"{"id":"shared-account","model":"backup","done":false}"#
+        XCTAssertNil(try route(tries: failed).focusedAccountIndex)
+        let fallback = try route(tries: failed + "," + backup)
+        XCTAssertEqual(fallback.focusedAccountIndex, 1)
+        XCTAssertTrue(fallback.isRerouted)
+
+        let served = #"{"id":"shared-account","model":"backup","done":true,"status":200}"#
+        let completed = try route(tries: failed + "," + served, done: true)
+        XCTAssertEqual(completed.focusedAttempt?.model, "backup")
+        XCTAssertTrue(completed.isSuccess)
+        XCTAssertEqual(completed.millis, 420)
     }
 }

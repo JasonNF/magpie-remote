@@ -13,6 +13,7 @@ struct RoutingStageCard: View {
     let reroutedCount: Int
     let errorCount: Int
     let isHistory: Bool
+    let isReceivingTrace: Bool
     let masked: Bool
     let activeURL: URL?
     let filterStatus: RouteFilterStatus
@@ -25,24 +26,24 @@ struct RoutingStageCard: View {
     @State private var appeared = false
 
     private var accounts: [GatewayWeighedDTO] { route?.order ?? [] }
-    private var isLive: Bool { route?.isPending == true && !isHistory }
+    private var isLive: Bool { route?.isPending == true && !isHistory && isReceivingTrace }
+    private var isResponding: Bool { (route?.contentAt ?? 0) > 0 }
 
     private var stageAgents: [RoutingStageAgent] {
         var seen = Set<String>()
         var out: [RoutingStageAgent] = []
-        for item in routes {
-            guard let agent = item.agent, !agent.isEmpty, seen.insert(agent).inserted else { continue }
-            out.append(RoutingStageAgent(id: agent, model: item.model))
-            if out.count >= 3 { break }
+        if let route, let agent = route.agent, !agent.isEmpty {
+            seen.insert(agent)
+            out.append(RoutingStageAgent(id: agent, model: route.model))
         }
-        if out.isEmpty, let agent = route?.agent, !agent.isEmpty {
-            out.append(RoutingStageAgent(id: agent, model: route?.model))
+        if isLive {
+            for item in routes where item.isPending {
+                guard let agent = item.agent, !agent.isEmpty, seen.insert(agent).inserted else { continue }
+                out.append(RoutingStageAgent(id: agent, model: item.model))
+                if out.count >= 3 { break }
+            }
         }
         return out
-    }
-
-    private var chosenAccountID: String? {
-        accounts.first(where: { $0.fallback != true })?.id ?? accounts.first?.id
     }
 
     private var accent: Color {
@@ -59,18 +60,25 @@ struct RoutingStageCard: View {
 
     /// 每帧都重新构造飞行路径会拖慢主线程；只在锚点或数据变化时计算一次。
     private var stageFlights: [RoutingFlight] {
-        RoutingStageFliers.makeFlights(anchors: anchors, colors: agentWireColors, accent: accent)
+        RoutingStageFliers.makeFlights(
+            anchors: anchors,
+            accountIndex: route?.focusedAccountIndex,
+            responding: isResponding,
+            accent: accent
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 headline
-                Text(modeText)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(MagpieTheme.textSecondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                if route != nil || (isReceivingTrace && !isHistory) {
+                    Text(modeText)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(MagpieTheme.textSecondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             stageLayout
@@ -89,9 +97,9 @@ struct RoutingStageCard: View {
                 .stroke(MagpieTheme.border, lineWidth: 1)
         )
         .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 6)
+        .offset(y: appeared || reduceMotion ? 0 : 6)
         .onAppear {
-            withAnimation(.easeOut(duration: 0.35)) { appeared = true }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.35)) { appeared = true }
         }
     }
 
@@ -112,11 +120,12 @@ struct RoutingStageCard: View {
     }
 
     private var headlineTail: String {
-        guard let route else { return String(localized: " · 等待下一次请求") }
+        guard let route else {
+            return isReceivingTrace && !isHistory ? String(localized: " · 等待下一次请求") : ""
+        }
         var parts: [String] = []
         if route.group != nil { parts.append(String(localized: "路由组")) }
-        let onCount = route.group?.members?.count
-            ?? accounts.filter { $0.fallback != true }.count
+        let onCount = route.group?.members?.count ?? accounts.count
         if accounts.isEmpty {
             if route.isPending { parts.append(String(localized: "正在读取请求")) }
         } else {
@@ -152,9 +161,7 @@ struct RoutingStageCard: View {
                 ? String(localized: "magpie 正在读取请求并决定去向。")
                 : String(localized: "这次请求没有可用的账号或 Key。")
         }
-        let onCount = route.group?.members?.count
-            ?? accounts.filter { $0.fallback != true }.count
-        if route.group == nil, onCount <= 1 {
+        if route.group == nil, accounts.count == 1 {
             return String(localized: "这里只开了一个账号或 Key，路由没有可选的。在供应商的编辑页再开一个，路由方式就在下面的「多账号 / 多 Key」里设置。")
         }
         return RoutingStagePalette.strategyDescription(strategyRaw)
@@ -172,6 +179,7 @@ struct RoutingStageCard: View {
         } else {
             host = "127.0.0.1:3425"
         }
+        if !isReceivingTrace { return host }
         if isHistory { return String(localized: "历史记录 · \(host)") }
         return isLive
             ? String(localized: "正在路由 · \(host)")
@@ -204,8 +212,9 @@ struct RoutingStageCard: View {
             accounts: accounts,
             expanded: $accountsExpanded,
             masked: masked,
-            chosenID: chosenAccountID,
+            chosenIndex: route?.focusedAccountIndex,
             isPending: isLive,
+            isResponding: isResponding,
             accent: accent
         )
         .routingStageAnchor("accounts")
@@ -242,8 +251,7 @@ struct RoutingStageCard: View {
             RoutingStageWires(
                 anchors: anchors,
                 colors: agentWireColors,
-                accent: accent,
-                animated: isLive && !reduceMotion
+                accent: accent
             )
             .allowsHitTesting(false)
         )
@@ -251,7 +259,9 @@ struct RoutingStageCard: View {
             // 没有进行中的请求时不播放飞鸟，避免空闲页面持续重绘。
             if isLive && !reduceMotion {
                 RoutingStageFliers(flights: stageFlights)
+                    .id(RoutingFlightState(requestID: route?.id, accountIndex: route?.focusedAccountIndex, responding: isResponding))
                     .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
     }
@@ -263,12 +273,12 @@ struct RoutingStageCard: View {
             Divider().overlay(MagpieTheme.border)
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .bottom, spacing: 14) {
-                    caption
+                    if route != nil || (isReceivingTrace && !isHistory) { caption }
                     Spacer(minLength: 6)
                     stats
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    caption
+                    if route != nil || (isReceivingTrace && !isHistory) { caption }
                     HStack {
                         Spacer()
                         stats
@@ -537,15 +547,10 @@ private struct RoutingStageAccountsColumn: View {
     let accounts: [GatewayWeighedDTO]
     @Binding var expanded: Bool
     let masked: Bool
-    let chosenID: String?
+    let chosenIndex: Int?
     let isPending: Bool
+    let isResponding: Bool
     let accent: Color
-
-    private var shown: [GatewayWeighedDTO] { accounts }
-    private var chosenIndex: Int? {
-        if let chosenID, let index = shown.firstIndex(where: { $0.id == chosenID }) { return index }
-        return shown.firstIndex(where: { $0.fallback != true }) ?? shown.indices.first
-    }
 
     var body: some View {
         VStack(spacing: 7) {
@@ -566,12 +571,13 @@ private struct RoutingStageAccountsColumn: View {
                     header(group)
                 }
                 if expanded {
-                    ForEach(Array(shown.enumerated()), id: \.offset) { index, account in
+                    ForEach(Array(accounts.enumerated()), id: \.offset) { index, account in
                         RoutingStageAccountRow(
                             account: account,
                             masked: masked,
                             isOn: index == chosenIndex,
                             isLive: isPending && index == chosenIndex,
+                            isResponding: isResponding,
                             accent: accent
                         )
                         .routingStageAnchor("account-\(index)")
@@ -647,6 +653,7 @@ private struct RoutingStageAccountRow: View {
     let masked: Bool
     let isOn: Bool
     let isLive: Bool
+    let isResponding: Bool
     let accent: Color
 
     private var displayName: String {
@@ -741,7 +748,7 @@ private struct RoutingStageAccountRow: View {
                     }
 
                     if isLive {
-                        Text(String(localized: "回答中…"))
+                        Text(isResponding ? String(localized: "回答中…") : String(localized: "调度中"))
                             .font(.system(size: 11.5))
                             .foregroundStyle(accent)
                     } else {
@@ -808,22 +815,15 @@ private struct RoutingStageWires: View {
     let anchors: [String: CGRect]
     let colors: [String: Color]
     let accent: Color
-    let animated: Bool
 
     var body: some View {
-        if animated {
-            TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 10.0)) { timeline in
-                canvas(phase: -CGFloat(timeline.date.timeIntervalSinceReferenceDate * 4))
-            }
-        } else {
-            canvas(phase: 0)
-        }
+        canvas
     }
 
-    private func canvas(phase: CGFloat) -> some View {
+    private var canvas: some View {
         Canvas { context, _ in
             guard !anchors.isEmpty else { return }
-            let style = StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 5], dashPhase: phase)
+            let style = StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 5])
 
             let hub = anchors["hub"]
             let accounts = anchors["accounts"]
@@ -898,17 +898,18 @@ private struct RoutingStageWires: View {
 private struct RoutingStageFliers: View {
     let flights: [RoutingFlight]
 
+    @State private var startedAt = Date()
+
     static func makeFlights(
         anchors: [String: CGRect],
-        colors: [String: Color],
+        accountIndex: Int?,
+        responding: Bool,
         accent: Color
     ) -> [RoutingFlight] {
         guard let hub = anchors["hub"] else { return [] }
         var out: [RoutingFlight] = []
 
-        let agentKeys = anchors.keys.filter { $0.hasPrefix("agent-") }.sorted()
-        for (index, key) in agentKeys.enumerated() {
-            guard let agent = anchors[key] else { continue }
+        if let agent = anchors["agent-0"] {
             let start = CGPoint(x: agent.maxX, y: agent.midY)
             let end = CGPoint(x: hub.minX, y: hub.midY)
             let cubic = RoutingCubic(
@@ -919,19 +920,18 @@ private struct RoutingStageFliers: View {
             )
             out.append(
                 RoutingFlight(
-                    id: "agent-\(index)",
+                    id: "agent",
                     segments: [cubic],
-                    color: colors[key] ?? accent,
+                    color: accent,
                     duration: 1.55,
-                    delay: Double(index) * 0.42,
+                    delay: 0,
                     cycle: 2.35,
-                    reversed: false
+                    reversed: responding
                 )
             )
         }
 
-        let accountKeys = anchors.keys.filter { $0.hasPrefix("account-") }.sorted()
-        if let account = accountKeys.first.flatMap({ anchors[$0] }),
+        if let account = accountIndex.flatMap({ anchors["account-\($0)"] }),
            let accounts = anchors["accounts"] {
             let start = CGPoint(x: hub.midX, y: hub.maxY)
             let laneX = accounts.minX - 10
@@ -951,36 +951,24 @@ private struct RoutingStageFliers: View {
                     .line(from: CGPoint(x: laneX, y: account.midY), to: rowEnd)
                 ]
             } else {
-                segments = [
-                    RoutingCubic(
-                        p0: start,
-                        p1: CGPoint(x: start.x, y: start.y + 24),
-                        p2: CGPoint(x: rowEnd.x - 20, y: rowEnd.y),
-                        p3: rowEnd
-                    )
-                ]
+                let start = CGPoint(x: hub.maxX, y: hub.midY)
+                segments = [RoutingCubic(
+                    p0: start,
+                    p1: CGPoint(x: start.x + 20, y: start.y),
+                    p2: CGPoint(x: rowEnd.x - 20, y: rowEnd.y),
+                    p3: rowEnd
+                )]
             }
 
             out.append(
                 RoutingFlight(
-                    id: "outbound",
+                    id: "account",
                     segments: segments,
-                    color: accent,
+                    color: responding ? accent.opacity(0.72) : accent,
                     duration: 1.35,
                     delay: 0.55,
                     cycle: 2.9,
-                    reversed: false
-                )
-            )
-            out.append(
-                RoutingFlight(
-                    id: "inbound",
-                    segments: segments,
-                    color: accent.opacity(0.72),
-                    duration: 1.35,
-                    delay: 1.95,
-                    cycle: 2.9,
-                    reversed: true
+                    reversed: responding
                 )
             )
         }
@@ -990,7 +978,7 @@ private struct RoutingStageFliers: View {
 
     var body: some View {
         TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 15.0)) { timeline in
-            let now = timeline.date.timeIntervalSinceReferenceDate
+            let now = max(0, timeline.date.timeIntervalSince(startedAt))
             ZStack(alignment: .topLeading) {
                 ForEach(flights) { flight in
                     if let pose = flight.pose(at: now) {
@@ -1016,6 +1004,12 @@ private struct RoutingStageFliers: View {
     }
 }
 
+private struct RoutingFlightState: Hashable {
+    let requestID: Int64?
+    let accountIndex: Int?
+    let responding: Bool
+}
+
 private struct RoutingFlight: Identifiable {
     let id: String
     let segments: [RoutingCubic]
@@ -1032,8 +1026,9 @@ private struct RoutingFlight: Identifiable {
         guard let current = point(at: t) else { return nil }
         let ahead = point(at: min(t + 0.012, 1)) ?? current
         let behind = point(at: max(t - 0.012, 0)) ?? current
-        let dx = ahead.x - behind.x
-        let dy = ahead.y - behind.y
+        let direction: CGFloat = reversed ? -1 : 1
+        let dx = (ahead.x - behind.x) * direction
+        let dy = (ahead.y - behind.y) * direction
         let fade = min(min(CGFloat(local) / 0.08, (1 - CGFloat(local)) / 0.08), 1)
         return RoutingFlightPose(
             point: current,

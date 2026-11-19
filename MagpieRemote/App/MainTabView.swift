@@ -25,7 +25,7 @@ enum AppPage: String, Hashable, CaseIterable, Identifiable {
         case .sessions: return String(localized: "Sessions")
         case .library: return String(localized: "Library")
         case .providers: return String(localized: "Providers")
-        case .routing: return String(localized: "路由历史")
+        case .routing: return String(localized: "路由")
         case .groups: return String(localized: "路由组")
         case .gateway: return String(localized: "网关")
         case .usage: return String(localized: "用量统计")
@@ -141,7 +141,7 @@ final class TabStore {
     static let shared = TabStore()
 
     private let storageKey = "magpie_custom_tabs_v2"
-    static let defaultPinned: [AppPage] = [.agents, .sessions, .library, .providers]
+    static let defaultPinned: [AppPage] = [.agents, .sessions, .routing, .providers]
 
     var pinnedTabs: [AppPage] {
         didSet {

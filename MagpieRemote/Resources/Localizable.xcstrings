@@ -13233,6 +13233,13 @@
         }
       }
     },
+    "实时 · 等待下一次请求" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Live · waiting for the next request" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リアルタイム · 次のリクエストを待機中" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "即時 · 等待下一次請求" } }
+      }
+    },
     "实时 · 网关正在做的决定" : {
       "localizations" : {
         "en" : {
@@ -13253,6 +13260,20 @@
             "value" : "實時 · 閘道器正在做的決定"
           }
         }
+      }
+    },
+    "实时路由暂不可用" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Live routing unavailable" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リアルタイムルーティングを利用できません" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "即時路由暫時無法使用" } }
+      }
+    },
+    "正在连接路由流…" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connecting to live routing…" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リアルタイムルーティングに接続中…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在連線到即時路由…" } }
       }
     },
     "实时决策链与备选" : {

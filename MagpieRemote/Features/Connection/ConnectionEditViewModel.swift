@@ -26,13 +26,7 @@ final class ConnectionEditViewModel {
         self.name = editing?.name ?? ""
         self.urlString = editing?.urlString ?? ""
         self.certificateAccount = editing?.id.uuidString ?? UUID().uuidString
-        if let editing, editing.urlString.contains("mapm.2020713.xyz") {
-            self.key = KeychainStore.read(for: editing.id.uuidString) ?? "79261a46b263781ddc6af6d168a8597543d8065fc5f71f14c2b942bef3f8afa0"
-        } else if let editing {
-            self.key = KeychainStore.read(for: editing.id.uuidString) ?? ""
-        } else {
-            self.key = ""
-        }
+        self.key = editing.flatMap { KeychainStore.read(for: $0.id.uuidString) } ?? ""
         if let editing, let bundle = ClientCertificateStore.load(for: editing.id.uuidString) {
             self.clientCertPEM = bundle.clientCertPEM
             self.clientKeyPEM = bundle.clientKeyPEM
@@ -162,20 +156,19 @@ final class ConnectionEditViewModel {
         isSaving = true
         defer { isSaving = false }
 
-        let connection: Connection
+        let connection = editing ?? Connection(name: trimmedName, urlString: normalizedURL)
+        let account = connection.id.uuidString
+        if !effectiveKey.isEmpty, !KeychainStore.save(effectiveKey, for: account) {
+            validationError = String(localized: "无法将 Web Key 保存到钥匙串。")
+            return false
+        }
         if let editing {
             editing.name = trimmedName
             editing.urlString = normalizedURL
-            connection = editing
         } else {
-            connection = Connection(name: trimmedName, urlString: normalizedURL)
             context.insert(connection)
         }
-        if !effectiveKey.isEmpty {
-            KeychainStore.save(effectiveKey, for: connection.id.uuidString)
-        }
-        // 证书按连接的真实 UUID 存储；新建连接时草稿用的是临时 UUID。
-        let account = connection.id.uuidString
+        // 新建连接的证书草稿使用临时 UUID，保存时按真实连接 UUID 存储。
         if let validatedBundle {
             if account != certificateAccount {
                 ClientCertificateStore.delete(for: certificateAccount)

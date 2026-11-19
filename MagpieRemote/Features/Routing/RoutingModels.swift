@@ -36,9 +36,14 @@ struct GatewayTraceDTO: Decodable, Sendable {
     var now: String?
     var seq: Int64?
     var ids: [Int64]?
+    var by: Source?
+
+    struct Source: Decodable, Sendable {
+        let pid: Int
+    }
     var totals: GatewayTalliesDTO?
 
-    enum CodingKeys: String, CodingKey { case routes, mine, now, seq, ids, totals }
+    enum CodingKeys: String, CodingKey { case routes, mine, now, seq, ids, totals, by }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -48,6 +53,7 @@ struct GatewayTraceDTO: Decodable, Sendable {
         self.seq = try? c.decodeIfPresent(Int64.self, forKey: .seq)
         self.ids = try? c.decodeIfPresent([Int64].self, forKey: .ids)
         self.totals = try? c.decodeIfPresent(GatewayTalliesDTO.self, forKey: .totals)
+        self.by = try? c.decodeIfPresent(Source.self, forKey: .by)
     }
 }
 
@@ -98,6 +104,19 @@ struct GatewayUsageItemDTO: Codable, Sendable, Hashable {
     }
 }
 
+struct GatewayRouteAttemptDTO: Decodable, Sendable, Hashable {
+    let id: String
+    let model: String?
+    let done: Bool
+    let status: Int?
+    let fail: String?
+
+    var isSuccessful: Bool {
+        guard done, let status else { return false }
+        return status < 400 && (fail ?? "").isEmpty
+    }
+}
+
 /// 单次路由决策的完整实体（原版 routeJSON / gateway.Route）
 struct GatewayRouteDTO: Decodable, Sendable, Identifiable, Hashable {
     var id: Int64
@@ -108,12 +127,14 @@ struct GatewayRouteDTO: Decodable, Sendable, Identifiable, Hashable {
     var provider: String?
     var group: GatewayGroupRefDTO?
     var order: [GatewayWeighedDTO]?
+    var tries: [GatewayRouteAttemptDTO]?
     var done: Bool?
     var status: Int?
     var error: String?
     var canceled: Bool?
     var millis: Int64?
     var ttft: Int64?
+    var contentAt: Int64?
     var tokens: Int?
     var out: Int?
     var cost: Double?
@@ -131,12 +152,11 @@ struct GatewayRouteDTO: Decodable, Sendable, Identifiable, Hashable {
     private(set) var parsedDate: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, seq, time, agent, model, provider, group, order, done, status
-        case error, canceled, millis, ttft, tokens, out, cost, priced, kind
-        case callerKeyName = "caller_key_name"
-        case session
-        case sessionTitle
-        case parentSession = "parent_session"
+        case id, seq, time, agent, model, provider, group, order, tries, done, status
+        case error, canceled, ms, millis, ttft, contentAt, tokens, out, cost, priced, kind
+        case callerKeyName, session, sessionTitle, parentSession
+        case legacyCallerKeyName = "caller_key_name"
+        case legacyParentSession = "parent_session"
         case moved, served, usage
     }
 
@@ -151,21 +171,26 @@ struct GatewayRouteDTO: Decodable, Sendable, Identifiable, Hashable {
         self.provider = try? c.decodeIfPresent(String.self, forKey: .provider)
         self.group = try? c.decodeIfPresent(GatewayGroupRefDTO.self, forKey: .group)
         self.order = try? c.decodeIfPresent([GatewayWeighedDTO].self, forKey: .order)
+        self.tries = try? c.decodeIfPresent([GatewayRouteAttemptDTO].self, forKey: .tries)
         self.done = try? c.decodeIfPresent(Bool.self, forKey: .done)
         self.status = try? c.decodeIfPresent(Int.self, forKey: .status)
         self.error = try? c.decodeIfPresent(String.self, forKey: .error)
         self.canceled = try? c.decodeIfPresent(Bool.self, forKey: .canceled)
-        self.millis = try? c.decodeIfPresent(Int64.self, forKey: .millis)
+        self.millis = (try? c.decodeIfPresent(Int64.self, forKey: .ms))
+            ?? (try? c.decodeIfPresent(Int64.self, forKey: .millis))
         self.ttft = try? c.decodeIfPresent(Int64.self, forKey: .ttft)
+        self.contentAt = try? c.decodeIfPresent(Int64.self, forKey: .contentAt)
         self.tokens = try? c.decodeIfPresent(Int.self, forKey: .tokens)
         self.out = try? c.decodeIfPresent(Int.self, forKey: .out)
         self.cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
         self.priced = try? c.decodeIfPresent(Bool.self, forKey: .priced)
         self.kind = try? c.decodeIfPresent(String.self, forKey: .kind)
-        self.callerKeyName = try? c.decodeIfPresent(String.self, forKey: .callerKeyName)
+        self.callerKeyName = (try? c.decodeIfPresent(String.self, forKey: .callerKeyName))
+            ?? (try? c.decodeIfPresent(String.self, forKey: .legacyCallerKeyName))
         self.session = try? c.decodeIfPresent(String.self, forKey: .session)
         self.sessionTitle = try? c.decodeIfPresent(String.self, forKey: .sessionTitle)
-        self.parentSession = try? c.decodeIfPresent(String.self, forKey: .parentSession)
+        self.parentSession = (try? c.decodeIfPresent(String.self, forKey: .parentSession))
+            ?? (try? c.decodeIfPresent(String.self, forKey: .legacyParentSession))
         self.moved = try? c.decodeIfPresent(GatewayMoveDTO.self, forKey: .moved)
         self.served = try? c.decodeIfPresent(String.self, forKey: .served)
         self.usage = try? c.decodeIfPresent([GatewayUsageItemDTO].self, forKey: .usage)
@@ -174,6 +199,23 @@ struct GatewayRouteDTO: Decodable, Sendable, Identifiable, Hashable {
     var isError: Bool { !(error ?? "").isEmpty || ((status ?? 0) >= 400) }
     var isPending: Bool { done != true }
     var isSuccess: Bool { !isPending && !isError && canceled != true }
+
+    var isRerouted: Bool {
+        if moved != nil { return true }
+        guard let tries, let first = tries.first else { return false }
+        return tries.dropFirst().contains { $0.id != first.id || $0.model != first.model }
+    }
+
+    var focusedAttempt: GatewayRouteAttemptDTO? {
+        if isPending { return tries?.last(where: { !$0.done }) }
+        return tries?.first(where: \.isSuccessful) ?? tries?.last
+    }
+
+    var focusedAccountIndex: Int? {
+        guard let attempt = focusedAttempt, !attempt.id.isEmpty, let order else { return nil }
+        return order.firstIndex { $0.id == attempt.id && $0.model == attempt.model }
+            ?? order.firstIndex { $0.id == attempt.id }
+    }
 
     var date: Date? { parsedDate }
 
@@ -451,10 +493,12 @@ final class RoutingViewModel {
     /// 状态过滤条件
     var filterStatus: RouteFilterStatus = .all
 
-    /// 实时是否正常服务
-    var isLiveMine = true
+    enum LiveStatus {
+        case connecting, live, unavailable, disconnected
+    }
+
+    private(set) var liveStatus: LiveStatus = .connecting
     var isLoading = false
-    var isLongPollingActive = false
     var errorMessage: String?
     var lastUpdated: Date?
 
@@ -464,6 +508,8 @@ final class RoutingViewModel {
     /// 内存路由池（按 ID 增量合并，最多保留 100 条）
     private var livePool: [Int64: GatewayRouteDTO] = [:]
     private var lastSeq: Int64 = 0
+    private var sourcePID: Int?
+    private var liveTotals: GatewayTalliesDTO?
 
     /// 后台长轮询任务
     private var pollingTask: Task<Void, Never>?
@@ -471,7 +517,6 @@ final class RoutingViewModel {
 
     /// 高频路由事件合并到最多 5Hz 刷新，避免每个事件都重建整页 SwiftUI 视图。
     private var pendingRouteList: [GatewayRouteDTO]?
-    private var pendingTotals: GatewayTalliesDTO?
     private var publishTask: Task<Void, Never>?
     private var lastPublishAt: Date = .distantPast
 
@@ -480,9 +525,7 @@ final class RoutingViewModel {
     /// 启动真正的长轮询（Long-polling）监听
     func startRealtimeTrace(client: MagpieAPIClient) {
         stopPolling()
-        cancelPendingPublish()
-        selectedDay = nil
-        totals = nil
+        if selectedDay == nil { errorMessage = nil }
 
         // 异步启动长轮询任务
         pollingTask = Task { [weak self] in
@@ -490,7 +533,7 @@ final class RoutingViewModel {
             await self.runLongPollingLoop(client: client)
         }
 
-        // 异步定期拉取历史天数
+        // 加载归档日期，避免阻塞实时连接。
         daysRefreshTask = Task { [weak self] in
             guard let self else { return }
             await self.loadAvailableDays(client: client)
@@ -499,7 +542,6 @@ final class RoutingViewModel {
 
     /// 长轮询主循环（对齐原版 JS poll 逻辑）
     private func runLongPollingLoop(client: MagpieAPIClient) async {
-        isLongPollingActive = true
         var initial = true
 
         while !Task.isCancelled {
@@ -519,15 +561,27 @@ final class RoutingViewModel {
 
                 if Task.isCancelled { break }
 
-                isLiveMine = trace.mine ?? true
-                if let newTotals = trace.totals { pendingTotals = newTotals }
-                if let newSeq = trace.seq {
-                    if newSeq < lastSeq {
-                        // 网关重置，清空内存池
-                        livePool.removeAll()
-                    }
-                    lastSeq = newSeq
+                if trace.mine == false {
+                    resetLiveTrace()
+                    liveStatus = .unavailable
+                    initial = true
+                    try? await Task.sleep(for: .seconds(5))
+                    continue
                 }
+
+                let newSource = trace.by?.pid
+                if !initial && newSource != sourcePID {
+                    resetLiveTrace()
+                    liveStatus = .connecting
+                    initial = true
+                    continue
+                }
+                if initial || (trace.seq ?? lastSeq) < lastSeq {
+                    resetLiveTrace()
+                }
+                sourcePID = newSource
+                lastSeq = trace.seq ?? lastSeq
+                if let newTotals = trace.totals { liveTotals = newTotals }
 
                 // 合并增量路由更新
                 if let receivedRoutes = trace.routes {
@@ -536,21 +590,16 @@ final class RoutingViewModel {
                     }
                 }
 
-                // 移除失效悬挂项
-                if let keptIds = trace.ids {
-                    let set = Set(keptIds)
-                    for (id, r) in livePool where !r.isPending && !set.contains(id) {
+                // ids 是网关仍保留的完整集合。错过结束事件的请求不能一直显示为进行中。
+                if let ids = trace.ids {
+                    let keptIDs = Set(ids)
+                    for (id, route) in livePool where route.isPending && !keptIDs.contains(id) {
                         livePool.removeValue(forKey: id)
                     }
                 }
 
                 // 内存保留最近 100 条记录
-                let sortedList = livePool.values.sorted {
-                    if let d1 = $0.date, let d2 = $1.date {
-                        return d1 > d2
-                    }
-                    return $0.id > $1.id
-                }
+                let sortedList = livePool.values.sorted { $0.id > $1.id }
                 if sortedList.count > 100 {
                     for stale in sortedList.suffix(from: 100) {
                         livePool.removeValue(forKey: stale.id)
@@ -560,19 +609,20 @@ final class RoutingViewModel {
                 // 仅在 Live 模式下更新展示；多个事件在 200ms 窗口内合并成一次 UI 更新。
                 if selectedDay == nil {
                     let newRoutes = Array(sortedList.prefix(100))
-                    if self.routes != newRoutes || (pendingTotals != nil && pendingTotals != totals) {
+                    if pendingRouteList != nil || self.routes != newRoutes || liveTotals != totals {
                         schedulePublish(newRoutes)
                     }
                 }
 
+                if liveStatus != .live { liveStatus = .live }
                 initial = false
             } catch {
                 if Task.isCancelled { break }
-                // 发生网络闪断，稍作退避重试
+                liveStatus = .disconnected
+                initial = true
                 try? await Task.sleep(for: .seconds(2))
             }
         }
-        isLongPollingActive = false
     }
 
     /// 停止长轮询
@@ -582,7 +632,19 @@ final class RoutingViewModel {
         daysRefreshTask?.cancel()
         daysRefreshTask = nil
         cancelPendingPublish()
-        isLongPollingActive = false
+        liveStatus = .connecting
+    }
+
+    private func resetLiveTrace() {
+        livePool.removeAll(keepingCapacity: true)
+        cancelPendingPublish()
+        lastSeq = 0
+        liveTotals = nil
+        if selectedDay == nil {
+            routes = []
+            totals = nil
+            lastUpdated = nil
+        }
     }
 
     private func schedulePublish(_ routes: [GatewayRouteDTO]) {
@@ -603,15 +665,14 @@ final class RoutingViewModel {
         publishTask = nil
         guard let routes = pendingRouteList else { return }
         pendingRouteList = nil
-        let newTotals = pendingTotals
-        pendingTotals = nil
+        let newTotals = liveTotals
 
         var didChange = false
         if self.routes != routes {
             self.routes = routes
             didChange = true
         }
-        if let newTotals, newTotals != totals {
+        if newTotals != totals {
             totals = newTotals
             didChange = true
         }
@@ -629,36 +690,41 @@ final class RoutingViewModel {
         publishTask?.cancel()
         publishTask = nil
         pendingRouteList = nil
-        pendingTotals = nil
     }
 
     // MARK: - 历史模式切换
 
     /// 切换查看历史某一天
     func selectDay(_ day: String?, client: MagpieAPIClient) async {
-        let liveTotals = pendingTotals
         cancelPendingPublish()
-        if day == nil {
+        guard let day else {
             // 切回 Live 实时流
             selectedDay = nil
-            let sortedList = livePool.values.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
-            self.routes = Array(sortedList.prefix(100))
+            routes = livePool.values.sorted { $0.id > $1.id }
             if pollingTask == nil {
                 startRealtimeTrace(client: client)
             }
-            self.totals = liveTotals
+            totals = liveTotals
+            isLoading = false
             self.errorMessage = nil
             return
         }
 
         // 切换到特定历史日期
+        if selectedDay != day {
+            routes = []
+            totals = nil
+            lastUpdated = nil
+            errorMessage = nil
+        }
         selectedDay = day
         isLoading = true
         do {
             let history: GatewayHistoryDTO = try await client.send(
-                .get("/api/gateway/history?day=\(day!)"),
+                .get("/api/gateway/history", query: [URLQueryItem(name: "day", value: day)]),
                 as: GatewayHistoryDTO.self
             )
+            guard selectedDay == day, !Task.isCancelled else { return }
             self.routes = (history.routes ?? []).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
             self.totals = history.tallies
             self.lastUpdated = Date()
@@ -667,6 +733,7 @@ final class RoutingViewModel {
                 self.availableDays = fetchedDays
             }
         } catch {
+            guard selectedDay == day, !Task.isCancelled else { return }
             self.errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
         }
         isLoading = false
@@ -687,29 +754,11 @@ final class RoutingViewModel {
 
     /// 手动刷新
     func refresh(client: MagpieAPIClient) async {
-        cancelPendingPublish()
+        // 实时刷新重启同一条轮询，避免迟到的快照覆盖已经收到的增量。
         if let day = selectedDay {
             await selectDay(day, client: client)
         } else {
-            // 实时模式下强制拉取一次 after=0
-            do {
-                let trace: GatewayTraceDTO = try await client.send(
-                    .get("/api/gateway/trace?after=0"),
-                    as: GatewayTraceDTO.self
-                )
-                if let receivedRoutes = trace.routes {
-                    for r in receivedRoutes {
-                        livePool[r.id] = r
-                    }
-                }
-                if let newTotals = trace.totals { totals = newTotals }
-                let sortedList = livePool.values.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
-                self.routes = Array(sortedList.prefix(100))
-                self.lastUpdated = Date()
-                self.errorMessage = nil
-            } catch {
-                self.errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
-            }
+            startRealtimeTrace(client: client)
         }
     }
 
@@ -722,7 +771,7 @@ final class RoutingViewModel {
 
     /// 发生重新路由/故障转移的次数
     var reroutedCount: Int {
-        routes.filter { ($0.order?.count ?? 0) > 1 || $0.moved != nil }.count
+        routes.count(where: \.isRerouted)
     }
 
     /// 客户端报错数
@@ -884,14 +933,14 @@ enum RoutingFormat {
             return String(localized: "\(agentName) 正在请求 \(modelName)，网关正在智能权衡最佳可用账户…")
         }
 
-        if let moved = route.moved {
+        if let moved = route.moved, route.isSuccess {
             let to = moved.to ?? String(localized: "备用账户")
             let why = moved.why ?? String(localized: "首选席位异常")
             return String(localized: "\(agentName) 请求 \(modelName)：首选席位遭遇「\(why)」，已自动重路由转交至 \(to) 完成应答。")
         }
 
-        if (route.order?.count ?? 0) > 1 {
-            let target = route.provider ?? String(localized: "备用席位")
+        if route.isRerouted, route.isSuccess {
+            let target = route.focusedAttempt?.model ?? route.provider ?? String(localized: "备用席位")
             return String(localized: "\(agentName) 请求 \(modelName)：经历首轮故障转移，最终由 \(target) 成功接单，耗时 \(latency(route.millis))。")
         }
 

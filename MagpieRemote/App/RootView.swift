@@ -44,13 +44,6 @@ struct RootView: View {
         let descriptor = FetchDescriptor<Connection>()
         let connections = (try? context.fetch(descriptor)) ?? []
 
-        // 模拟器调试兜底：若存在 mapm 测试连接但缺少 Key，注入单元测试中的公开测试 Key
-        for conn in connections {
-            if conn.urlString.contains("mapm.2020713.xyz") && (KeychainStore.read(for: conn.id.uuidString)?.isEmpty ?? true) {
-                KeychainStore.save("79261a46b263781ddc6af6d168a8597543d8065fc5f71f14c2b942bef3f8afa0", for: conn.id.uuidString)
-            }
-        }
-
         if let target = connections.first(where: { (KeychainStore.read(for: $0.id.uuidString)?.isEmpty == false) }), !app.isConnected {
             await app.activate(id: target.id, name: target.name, urlString: target.urlString)
             return
@@ -63,15 +56,13 @@ struct RootView: View {
             return
         }
 
-        let connection: Connection
-        if let existing = connections.first(where: { $0.urlString == urlString }) {
-            connection = existing
-        } else {
-            connection = Connection(name: "Dev", urlString: urlString, sortOrder: 0)
+        let existing = connections.first { $0.urlString == urlString }
+        let connection = existing ?? Connection(name: "Dev", urlString: urlString, sortOrder: 0)
+        guard KeychainStore.save(key, for: connection.id.uuidString) else { return }
+        if existing == nil {
             context.insert(connection)
             try? context.save()
         }
-        KeychainStore.save(key, for: connection.id.uuidString)
         await app.activate(
             id: connection.id,
             name: connection.name,

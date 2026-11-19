@@ -43,7 +43,7 @@
 | **🔀 Groups** | Strategy groups at a glance with online editing; affinity matching, multi-level fallback, rule classifiers, and template import/export. | Drag-to-reorder and native strategy micro-capsules. |
 | **📊 Usage** | Real-time token statistics and request ledger; one-tap check-ins (WorkBuddy / Trae / Qoder / MiniMax, etc.); Tuned-for-you context suggestions. | Apple Charts vector trends and haptic feedback. |
 | **💬 Sessions** | Transcripts of historical interactions; native Markdown highlighting and copy; cross-agent transcript carry; trash and restore. | Virtualized long lists with one-tap save to the server. |
-| **⚡ Routing** | Historical routing trace-back; real-time routing decision stream over long polling. | Animated active cards showing how requests hit and flow across providers. |
+| **⚡ Routing** | Live routing from the same trace endpoint as the Mac app, with searchable history. | New iPhone installs get a Routing tab. The animated path follows the active account and changes direction as the reply starts. |
 | **🔑 Gateway** | Gateway credential management; sliding-window quotas (daily / weekly / monthly / hourly token or cost limits). | Native quota progress bars and live reset countdowns. |
 | **🛡️ Masking** | Sensitive-entity redaction rule library; interactive preview sandbox and intercepted-request audit. | Live syntax diff and whitelist markers. |
 | **📚 Library** | One-stop Skills and MCP server management; built-in Skills.sh and MCP Registry marketplaces; built-in memory store. | Card-based marketplace with one-tap installation and auto-discovery. |

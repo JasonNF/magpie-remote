@@ -31,9 +31,11 @@ Magpie Remote 严格遵循现代化 **SwiftUI + MVVM + Observation** 架构，�
                             │ KeychainStore / Keychain
 ┌───────────────────────────▼────────────────────────────┐
 │              Apple Keychain (凭据持久化层)              │
-│  - 安全隔离存储服务器 URL 与 Web Key 访问密钥           │
+│  - 按连接保存 Web Key 与客户端证书材料                │
 └────────────────────────────────────────────────────────┘
 ```
+
+读取旧版连接时会迁移偏好设置中的 Web Key，确认钥匙串可用后清除明文副本。模拟器联调用 `MAGPIE_DEV_URL` 和 `MAGPIE_DEV_KEY` 提供连接凭据。
 
 ---
 
@@ -94,7 +96,7 @@ MagpieRemote/
 │   ├── Groups/               # 智能路由组、策略配置与优先级
 │   ├── Usage/                # 费用与 Token 账本、配额刷新与一键签到
 │   ├── Sessions/             # 历史对话记录、Transcript 与回收站管理
-│   ├── Routing/              # 历史路由记录与 2s 轮询实时决策流
+│   ├── Routing/              # 历史路由、游标长轮询和按实际尝试更新的决策舞台
 │   ├── Gateway/              # 网关令牌、限流窗口与时间窗口配额
 │   ├── Masking/              # 敏感字段脱敏沙盒与拦截历史
 │   ├── Library/              # Skills、MCP 工具服务与 Memory 记忆库

@@ -4,6 +4,8 @@ import SwiftUI
 /// 支持实时毫秒级长轮询流、按请求/按会话/按密钥三种分组、历史回溯、流动决策舞台及候选权衡链路。
 struct RoutingView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("magpie_mask_accounts") private var maskAccounts = false
 
     @State private var viewModel = RoutingViewModel()
@@ -24,7 +26,7 @@ struct RoutingView: View {
         case .errors:
             list = list.filter { $0.isError }
         case .rerouted:
-            list = list.filter { ($0.order?.count ?? 0) > 1 || $0.moved != nil }
+            list = list.filter(\.isRerouted)
         case .pending:
             list = list.filter { $0.isPending }
         }
@@ -130,9 +132,11 @@ struct RoutingView: View {
                     await viewModel.refresh(client: client)
                 }
             }
-            .task {
-                if let client = app.client {
+            .task(id: scenePhase == .active ? app.activeID : nil) {
+                if scenePhase == .active, let client = app.client {
                     viewModel.startRealtimeTrace(client: client)
+                } else {
+                    viewModel.stopPolling()
                 }
             }
             .onDisappear {
@@ -164,13 +168,20 @@ struct RoutingView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(MagpieTheme.textPrimary)
 
-                MagpiePulseDot(color: viewModel.pendingRoutes.isEmpty ? MagpieTheme.green : MagpieTheme.accent)
+                if showLiveMotion && !reduceMotion {
+                    MagpiePulseDot(color: MagpieTheme.accent)
+                        .accessibilityHidden(true)
+                } else {
+                    Circle()
+                        .fill(liveStatusColor)
+                        .frame(width: 7, height: 7)
+                        .frame(width: 14, height: 14)
+                        .accessibilityHidden(true)
+                }
 
-                Text(viewModel.selectedDay == nil
-                     ? String(localized: "实时 · 网关正在做的决定")
-                     : String(localized: "历史归档"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(MagpieTheme.textMuted)
+                Text(liveStatusText)
+                    .font(.caption)
+                    .foregroundStyle(MagpieTheme.textSecondary)
 
                 Spacer(minLength: 4)
 
@@ -189,6 +200,7 @@ struct RoutingView: View {
                 reroutedCount: viewModel.totals?.rerouted ?? viewModel.reroutedCount,
                 errorCount: viewModel.totals?.errors ?? viewModel.errorCount,
                 isHistory: viewModel.selectedDay != nil,
+                isReceivingTrace: viewModel.liveStatus == .live,
                 masked: maskAccounts,
                 activeURL: app.activeURL,
                 filterStatus: viewModel.filterStatus,
@@ -198,6 +210,30 @@ struct RoutingView: View {
                     }
                 }
             )
+        }
+    }
+
+    private var showLiveMotion: Bool {
+        viewModel.selectedDay == nil && viewModel.liveStatus == .live && activeFocusRoute?.isPending == true
+    }
+
+    private var liveStatusColor: Color {
+        guard viewModel.selectedDay == nil else { return MagpieTheme.textMuted }
+        switch viewModel.liveStatus {
+        case .live: return showLiveMotion ? MagpieTheme.accent : MagpieTheme.green
+        case .connecting: return MagpieTheme.textMuted
+        case .unavailable, .disconnected: return MagpieTheme.red
+        }
+    }
+
+    private var liveStatusText: String {
+        guard viewModel.selectedDay == nil else { return String(localized: "历史归档") }
+        switch viewModel.liveStatus {
+        case .connecting: return String(localized: "正在连接路由流…")
+        case .live:
+            return showLiveMotion ? String(localized: "实时 · 网关正在做的决定") : String(localized: "实时 · 等待下一次请求")
+        case .unavailable: return String(localized: "实时路由暂不可用")
+        case .disconnected: return String(localized: "连接已断开")
         }
     }
 
@@ -229,7 +265,7 @@ struct RoutingView: View {
             } label: {
                 HStack(spacing: 5) {
                     Circle()
-                        .fill(viewModel.selectedDay == nil ? MagpieTheme.green : MagpieTheme.accent)
+                        .fill(viewModel.selectedDay == nil ? liveStatusColor : MagpieTheme.accent)
                         .frame(width: 6, height: 6)
                     Text(viewModel.selectedDay ?? String(localized: "实时流 (Live)"))
                         .font(.system(size: 11.5, weight: .semibold, design: viewModel.selectedDay != nil ? .monospaced : .default))
@@ -467,7 +503,9 @@ struct RoutingView: View {
         Group {
             if route.isPending {
                 HStack(spacing: 4) {
-                    MagpiePulseDot(color: MagpieTheme.accent)
+                    if showLiveMotion && !reduceMotion {
+                        MagpiePulseDot(color: MagpieTheme.accent).accessibilityHidden(true)
+                    }
                     Text(String(localized: "调度中"))
                 }
                 .padding(.horizontal, 6)
@@ -551,8 +589,8 @@ struct RoutingView: View {
 
                     Spacer()
 
-                    if group.hasPending {
-                        MagpiePulseDot(color: MagpieTheme.accent)
+                    if group.hasPending && showLiveMotion && !reduceMotion {
+                        MagpiePulseDot(color: MagpieTheme.accent).accessibilityHidden(true)
                     }
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")

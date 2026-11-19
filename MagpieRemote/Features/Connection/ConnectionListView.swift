@@ -164,7 +164,7 @@ struct ConnectionListView: View {
 
     @ViewBuilder
     private func connectionCard(_ connection: Connection) -> some View {
-        let hasKey = (KeychainStore.read(for: connection.id.uuidString)?.isEmpty == false) || connection.urlString.contains("mapm.2020713.xyz")
+        let hasKey = KeychainStore.read(for: connection.id.uuidString)?.isEmpty == false
 
         Button {
             MagpieHaptics.light()
