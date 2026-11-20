@@ -19222,6 +19222,28 @@
         }
       }
     },
+    "显示 %lld 个未接入的 Agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show %lld unconnected agents"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未接続のエージェント %lld 件を表示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示 %lld 個未接入的 Agent"
+          }
+        }
+      }
+    },
     "显示剩余额度" : {
       "localizations" : {
         "en" : {
@@ -30684,6 +30706,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "隱藏 Agent 自帶模型"
+          }
+        }
+      }
+    },
+    "隐藏未接入的 Agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide unconnected agents"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未接続のエージェントを隠す"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏未接入的 Agent"
           }
         }
       }

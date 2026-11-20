@@ -16,8 +16,10 @@ struct AgentsView: View {
     @State private var renameProfileText = ""
     @State private var showingAgentOrder = false
     @State private var showingServers = false
+    @AppStorage("magpie_hide_unwired_agents") private var hideUnwired = false
 
     private var agents: [AgentDTO] { app.state?.agents ?? [] }
+    private var visibleAgents: [AgentDTO] { hideUnwired ? agents.filter { $0.wired == true } : agents }
     private var profiles: [ProfileDTO] { app.state?.profiles ?? [] }
 
     var body: some View {
@@ -44,7 +46,7 @@ struct AgentsView: View {
                     } else {
                         MagpieGlassGroup(spacing: 12) {
                             LazyVStack(spacing: 12) {
-                                ForEach(agents) { agent in
+                                ForEach(visibleAgents) { agent in
                                     NavigationLink(value: AgentRoute(id: agent.id)) {
                                         AgentCard(
                                             agent: agent,
@@ -74,7 +76,22 @@ struct AgentsView: View {
                                 }
                             }
                         }
-                        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: agents.map(\.id))
+                        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: visibleAgents.map(\.id))
+
+                        let hiddenCount = agents.count - visibleAgents.count
+                        if hiddenCount > 0 {
+                            Button {
+                                MagpieHaptics.light()
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { hideUnwired = false }
+                            } label: {
+                                Label(String(localized: "显示 \(hiddenCount) 个未接入的 Agent"), systemImage: "eye")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(MagpieTheme.textMuted)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
 
                     if !viewModel.quotas.isEmpty {
@@ -135,6 +152,12 @@ struct AgentsView: View {
                             showingAgentOrder = true
                         } label: {
                             Label(String(localized: "调整 Agent 顺序…"), systemImage: "arrow.up.arrow.down")
+                        }
+                        Toggle(isOn: Binding(
+                            get: { hideUnwired },
+                            set: { newValue in withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { hideUnwired = newValue } }
+                        )) {
+                            Label(String(localized: "隐藏未接入的 Agent"), systemImage: "eye.slash")
                         }
                     } label: {
                         if isRescanning {
