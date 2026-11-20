@@ -17,6 +17,8 @@ struct MoreFanMenu: View {
     let onSelect: (AppPage) -> Void
     let onCustomize: () -> Void
     let onDismiss: () -> Void
+    /// 标签放在图标右侧、整列朝右展开（左侧竖排导航栏时用）。默认跟随布局方向，标签在内侧。
+    var labelsOnRight: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.layoutDirection) private var layoutDirection
@@ -34,7 +36,7 @@ struct MoreFanMenu: View {
         let count = pages.count + 1
         let bottom = origin.y - Self.triggerGap
         let availableHeight = max(0, bottom - Self.topClearance)
-        let direction: CGFloat = layoutDirection == .leftToRight ? 1 : -1
+        let direction: CGFloat = labelsOnRight ? -1 : (layoutDirection == .leftToRight ? 1 : -1)
         let trailingSpace = direction > 0 ? size.width - origin.x : origin.x
 
         let singleRowHeight = max(Self.regularIconSize, labelHeight)
@@ -75,6 +77,7 @@ struct MoreFanMenu: View {
                             targetY: targetY,
                             peakRise: localOrigin.y - pitch / 2,
                             reach: reach, direction: direction,
+                            labelsOnRight: labelsOnRight,
                             progress: progress,
                             moves: !reduceMotion
                         ))
@@ -109,6 +112,7 @@ struct MoreFanMenu: View {
                             targetY: targetY,
                             peakRise: localOrigin.y - pitch / 2,
                             reach: reach, direction: direction,
+                            labelsOnRight: labelsOnRight,
                             progress: progress,
                             moves: !reduceMotion && !scrolls
                         ))
@@ -168,6 +172,7 @@ struct MoreFanMenu: View {
             action()
         } label: {
             HStack(spacing: 9) {
+                if labelsOnRight { rowIcon(icon, tint: tint, iconSize: iconSize) }
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(MagpieTheme.textPrimary)
@@ -185,24 +190,28 @@ struct MoreFanMenu: View {
                     .overlay { Capsule().strokeBorder(MagpieTheme.borderSubtle, lineWidth: 0.6) }
                     .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.12), radius: 5, y: 2)
 
-                Image(systemName: icon)
-                    .font(.system(size: iconSize >= 44 ? 20 : 18, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: iconSize, height: iconSize)
-                    .background {
-                        Circle()
-                            .fill(tint.opacity(0.14))
-                            .background(MagpieTheme.card, in: Circle())
-                    }
-                    .overlay { Circle().strokeBorder(tint.opacity(0.35), lineWidth: 0.7) }
-                    .shadow(color: tint.opacity(0.24), radius: 7, y: 3)
-                    .accessibilityHidden(true)
+                if !labelsOnRight { rowIcon(icon, tint: tint, iconSize: iconSize) }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(FanPressStyle())
         .accessibilityLabel(title)
         .accessibilityAction(.escape) { onDismiss() }
+    }
+
+    private func rowIcon(_ icon: String, tint: Color, iconSize: CGFloat) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: iconSize >= 44 ? 20 : 18, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: iconSize, height: iconSize)
+            .background {
+                Circle()
+                    .fill(tint.opacity(0.14))
+                    .background(MagpieTheme.card, in: Circle())
+            }
+            .overlay { Circle().strokeBorder(tint.opacity(0.35), lineWidth: 0.7) }
+            .shadow(color: tint.opacity(0.24), radius: 7, y: 3)
+            .accessibilityHidden(true)
     }
 }
 
@@ -218,6 +227,7 @@ private struct FanPlacement: ViewModifier, @MainActor Animatable {
     let peakRise: CGFloat
     let reach: CGFloat
     let direction: CGFloat
+    var labelsOnRight: Bool = false
     var progress: CGFloat
     let moves: Bool
 
@@ -243,7 +253,7 @@ private struct FanPlacement: ViewModifier, @MainActor Animatable {
             let tilt = direction * min(14, Double(reach * distance / max(1, peakRise)) * 90)
 
             content
-                .frame(width: rowWidth, height: rowHeight, alignment: .trailing)
+                .frame(width: rowWidth, height: rowHeight, alignment: labelsOnRight ? .leading : .trailing)
                 .scaleEffect(moves ? 0.35 + 0.65 * phase : 1, anchor: pivot)
                 .rotationEffect(.degrees(tilt), anchor: pivot)
                 .position(x: currentIconX - direction * iconInset, y: launchOrigin.y - rise)

@@ -274,23 +274,45 @@ struct MainTabView: View {
 
     // MARK: - iPhone（自定义 Liquid Glass 底栏 + 气泡 More）
 
-    /// 横屏时若一侧有宽安全区（iPhone Duo 横屏把状态栏竖着放在右侧那一列），
-    /// 导航栏改为竖排放进那一列；普通 iPhone 横屏左右安全区对称，仍用底栏。
-    static func usesTrailingRail(size: CGSize, insets: EdgeInsets) -> Bool {
-        guard size.width > size.height else { return false }
-        return insets.trailing >= MagpieLiquidTabBar.railWidth
-            && insets.trailing - insets.leading >= 24
+    /// 某一侧有一列宽安全区时（iPhone Duo 展开横屏、合上用外屏时，状态栏竖着放在侧边那一列，
+    /// 哪一侧取决于手机的拿法），导航栏改为竖排放进那一列。
+    /// 普通 iPhone 竖屏左右没有安全区、横屏左右对称，仍用底栏。
+    static func railEdge(size: CGSize, insets: EdgeInsets) -> HorizontalEdge? {
+        guard size.height >= 320 else { return nil }
+        let rail = MagpieLiquidTabBar.railWidth
+        if insets.trailing >= rail, insets.trailing - insets.leading >= 24 { return .trailing }
+        if insets.leading >= rail, insets.leading - insets.trailing >= 24 { return .leading }
+        return nil
+    }
+
+    /// More 扇形的起点：竖排栏时放在栏的内侧，不压住栏里的其他按钮。
+    static func fanOrigin(trigger: CGRect, rail: HorizontalEdge?) -> CGPoint {
+        switch rail {
+        case .trailing: CGPoint(x: trigger.minX - 36, y: trigger.maxY + 8)
+        case .leading: CGPoint(x: trigger.maxX + 36, y: trigger.maxY + 8)
+        case nil: CGPoint(x: trigger.midX, y: trigger.midY)
+        }
     }
 
     private var compactTabs: some View {
         GeometryReader { proxy in
-            compactTabs(rail: Self.usesTrailingRail(size: proxy.size, insets: proxy.safeAreaInsets),
-                        trailingInset: proxy.safeAreaInsets.trailing)
+            let edge = Self.railEdge(size: proxy.size, insets: proxy.safeAreaInsets)
+            compactTabs(
+                rail: edge,
+                railInset: edge == .leading ? proxy.safeAreaInsets.leading : proxy.safeAreaInsets.trailing
+            )
         }
     }
 
-    private func compactTabs(rail: Bool, trailingInset: CGFloat) -> some View {
-        ZStack(alignment: rail ? .bottomTrailing : .bottom) {
+    private func compactTabs(rail: HorizontalEdge?, railInset: CGFloat) -> some View {
+        let barAlignment: Alignment = switch rail {
+        case .trailing: .bottomTrailing
+        case .leading: .bottomLeading
+        case nil: .bottom
+        }
+        // 竖排时放进状态栏那一列，与时间、状态图标对齐（系统这一列的中线比安全区中线略偏向内容）
+        let railPadding = max(0, (railInset - MagpieLiquidTabBar.railWidth) / 2 + MagpieLiquidTabBar.railStatusColumnNudge)
+        return ZStack(alignment: barAlignment) {
             TabView(selection: $compactSelection) {
                 ForEach(tabStore.pinnedTabs) { page in
                     Tab(page.shortTitle, systemImage: page.icon, value: page) {
@@ -327,18 +349,16 @@ struct MainTabView: View {
                 pinnedTabs: tabStore.pinnedTabs,
                 selectedTab: barSelection,
                 isMoreOpen: isMoreBubblePresented,
-                axis: rail ? .vertical : .horizontal,
+                axis: rail != nil ? .vertical : .horizontal,
                 onToggleMore: {
                     MagpieHaptics.light()
                     isMoreBubblePresented.toggle()
                 }
             )
-            // 竖排时放进右侧状态栏那一列，与时间、状态图标对齐（系统这一列比安全区中线略偏左）
-            .padding(.trailing, rail
-                ? max(0, (trailingInset - MagpieLiquidTabBar.railWidth) / 2 + MagpieLiquidTabBar.railStatusColumnNudge)
-                : 0)
-            .padding(.bottom, rail ? 6 : 8)
-            .ignoresSafeArea(.container, edges: rail ? .trailing : [])
+            .padding(.trailing, rail == .trailing ? railPadding : 0)
+            .padding(.leading, rail == .leading ? railPadding : 0)
+            .padding(.bottom, rail != nil ? 6 : 8)
+            .ignoresSafeArea(.container, edges: rail == .trailing ? .trailing : rail == .leading ? .leading : [])
         }
         .overlayPreferenceValue(MoreFanAnchorKey.self) { anchor in
             GeometryReader { proxy in
@@ -346,10 +366,8 @@ struct MainTabView: View {
                     let trigger = proxy[anchor]
                     MoreFanMenu(
                         pages: tabStore.unpinnedTabs,
-                        // 竖排导航栏时扇形从栏的左侧升起，不压住栏里的其他按钮
-                        origin: rail
-                            ? CGPoint(x: trigger.minX - 36, y: trigger.maxY + 8)
-                            : CGPoint(x: trigger.midX, y: trigger.midY),
+                        // 竖排导航栏时扇形从栏的内侧升起，不压住栏里的其他按钮
+                        origin: Self.fanOrigin(trigger: trigger, rail: rail),
                         size: proxy.size,
                         progress: isMoreBubblePresented ? 1 : 0,
                         onSelect: { page in
@@ -360,7 +378,8 @@ struct MainTabView: View {
                             isMoreBubblePresented = false
                             showingCustomizationSheet = true
                         },
-                        onDismiss: { isMoreBubblePresented = false }
+                        onDismiss: { isMoreBubblePresented = false },
+                        labelsOnRight: rail == .leading
                     )
                     .allowsHitTesting(isMoreBubblePresented)
                     .accessibilityHidden(!isMoreBubblePresented)
@@ -464,7 +483,7 @@ struct MagpieLiquidTabBar: View {
     static let maximumWidth: CGFloat = 460
     /// 竖排（横屏侧栏）时整条栏的宽度。
     static let railWidth: CGFloat = 66
-    /// iPhone Duo 横屏时状态栏那一列的中线比安全区中线偏左约 6pt（实测）。
+    /// iPhone Duo 状态栏那一列的中线比安全区中线偏向内容约 6pt（实测）。
     static let railStatusColumnNudge: CGFloat = 6
 
     let pinnedTabs: [AppPage]
@@ -784,3 +803,4 @@ struct TabBarCustomizationSheet: View {
         .frame(maxWidth: 320)
     }
 }
+

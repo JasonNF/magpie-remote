@@ -42,19 +42,29 @@ final class NavigationLayoutTests: XCTestCase {
         XCTAssertGreaterThan(SessionsView.moreChipWidth("更多"), SessionsView.chipWidth("更多"))
     }
 
-    func testRailOnlyForWideTrailingColumnInLandscape() {
+    func testRailFollowsTheStatusBarColumn() {
         // iPhone Duo 横屏：右侧状态栏一列
-        XCTAssertTrue(MainTabView.usesTrailingRail(
+        XCTAssertEqual(MainTabView.railEdge(
             size: CGSize(width: 715, height: 542),
             insets: EdgeInsets(top: 0, leading: 0, bottom: 21, trailing: 85)
-        ))
+        ), .trailing)
         // 普通 iPhone 横屏：左右对称
-        XCTAssertFalse(MainTabView.usesTrailingRail(
+        XCTAssertNil(MainTabView.railEdge(
             size: CGSize(width: 750, height: 381),
             insets: EdgeInsets(top: 0, leading: 62, bottom: 21, trailing: 62)
         ))
-        // 竖屏
-        XCTAssertFalse(MainTabView.usesTrailingRail(
+        // iPhone Duo 合上用外屏（竖屏）：状态栏也在右侧一列
+        XCTAssertEqual(MainTabView.railEdge(
+            size: CGSize(width: 380, height: 678),
+            insets: EdgeInsets(top: 0, leading: 0, bottom: 21, trailing: 86)
+        ), .trailing)
+        // 状态栏一列在左侧
+        XCTAssertEqual(MainTabView.railEdge(
+            size: CGSize(width: 594, height: 466),
+            insets: EdgeInsets(top: 0, leading: 84, bottom: 21, trailing: 0)
+        ), .leading)
+        // 普通 iPhone 竖屏
+        XCTAssertNil(MainTabView.railEdge(
             size: CGSize(width: 402, height: 800),
             insets: EdgeInsets(top: 62, leading: 0, bottom: 34, trailing: 0)
         ))
