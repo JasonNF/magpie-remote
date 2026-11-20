@@ -273,8 +273,24 @@ struct MainTabView: View {
     }
 
     // MARK: - iPhone（自定义 Liquid Glass 底栏 + 气泡 More）
+
+    /// 横屏时若一侧有宽安全区（iPhone Duo 横屏把状态栏竖着放在右侧那一列），
+    /// 导航栏改为竖排放进那一列；普通 iPhone 横屏左右安全区对称，仍用底栏。
+    static func usesTrailingRail(size: CGSize, insets: EdgeInsets) -> Bool {
+        guard size.width > size.height else { return false }
+        return insets.trailing >= MagpieLiquidTabBar.railWidth
+            && insets.trailing - insets.leading >= 24
+    }
+
     private var compactTabs: some View {
-        ZStack(alignment: .bottom) {
+        GeometryReader { proxy in
+            compactTabs(rail: Self.usesTrailingRail(size: proxy.size, insets: proxy.safeAreaInsets),
+                        trailingInset: proxy.safeAreaInsets.trailing)
+        }
+    }
+
+    private func compactTabs(rail: Bool, trailingInset: CGFloat) -> some View {
+        ZStack(alignment: rail ? .bottomTrailing : .bottom) {
             TabView(selection: $compactSelection) {
                 ForEach(tabStore.pinnedTabs) { page in
                     Tab(page.shortTitle, systemImage: page.icon, value: page) {
@@ -311,12 +327,18 @@ struct MainTabView: View {
                 pinnedTabs: tabStore.pinnedTabs,
                 selectedTab: barSelection,
                 isMoreOpen: isMoreBubblePresented,
+                axis: rail ? .vertical : .horizontal,
                 onToggleMore: {
                     MagpieHaptics.light()
                     isMoreBubblePresented.toggle()
                 }
             )
-            .padding(.bottom, 8)
+            // 竖排时放进右侧状态栏那一列，与时间、状态图标对齐（系统这一列比安全区中线略偏左）
+            .padding(.trailing, rail
+                ? max(0, (trailingInset - MagpieLiquidTabBar.railWidth) / 2 + MagpieLiquidTabBar.railStatusColumnNudge)
+                : 0)
+            .padding(.bottom, rail ? 6 : 8)
+            .ignoresSafeArea(.container, edges: rail ? .trailing : [])
         }
         .overlayPreferenceValue(MoreFanAnchorKey.self) { anchor in
             GeometryReader { proxy in
@@ -324,7 +346,10 @@ struct MainTabView: View {
                     let trigger = proxy[anchor]
                     MoreFanMenu(
                         pages: tabStore.unpinnedTabs,
-                        origin: CGPoint(x: trigger.midX, y: trigger.midY),
+                        // 竖排导航栏时扇形从栏的左侧升起，不压住栏里的其他按钮
+                        origin: rail
+                            ? CGPoint(x: trigger.minX - 36, y: trigger.maxY + 8)
+                            : CGPoint(x: trigger.midX, y: trigger.midY),
                         size: proxy.size,
                         progress: isMoreBubblePresented ? 1 : 0,
                         onSelect: { page in
@@ -437,17 +462,25 @@ struct MainTabView: View {
 // MARK: - 浮动 Liquid Glass 底部 TabBar（iOS 26/27 现代风格）
 struct MagpieLiquidTabBar: View {
     static let maximumWidth: CGFloat = 460
+    /// 竖排（横屏侧栏）时整条栏的宽度。
+    static let railWidth: CGFloat = 66
+    /// iPhone Duo 横屏时状态栏那一列的中线比安全区中线偏左约 6pt（实测）。
+    static let railStatusColumnNudge: CGFloat = 6
 
     let pinnedTabs: [AppPage]
     @Binding var selectedTab: AppPage
     let isMoreOpen: Bool
+    var axis: Axis = .horizontal
     let onToggleMore: () -> Void
+
+    private var isVertical: Bool { axis == .vertical }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 4) {
+        let layout = isVertical ? AnyLayout(VStackLayout(spacing: 2)) : AnyLayout(HStackLayout(spacing: 4))
+        return layout {
             ForEach(pinnedTabs) { tab in
                 tabButton(tab)
             }
@@ -455,8 +488,8 @@ struct MagpieLiquidTabBar: View {
             // More (更多) 导航按钮
             moreButton
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, isVertical ? 4 : 10)
+        .padding(.vertical, isVertical ? 8 : 6)
         .background(
             Capsule()
                 .fill(MagpieTheme.card.opacity(colorScheme == .dark ? 0.78 : 0.88))
@@ -467,8 +500,8 @@ struct MagpieLiquidTabBar: View {
                 .stroke(MagpieTheme.borderSubtle, lineWidth: 0.6)
         )
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.08), radius: 16, x: 0, y: 6)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: Self.maximumWidth)
+        .padding(.horizontal, isVertical ? 0 : 16)
+        .frame(maxWidth: isVertical ? Self.railWidth : Self.maximumWidth)
     }
 
     private func tabButton(_ tab: AppPage) -> some View {
@@ -495,7 +528,7 @@ struct MagpieLiquidTabBar: View {
                     .minimumScaleFactor(0.8)
             }
             .padding(.horizontal, 3)
-            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
+            .modifier(TabItemFrame(isVertical: isVertical, width: Self.railWidth - 8))
             .contentShape(Rectangle())
             .background {
                 if isSelected {
@@ -526,7 +559,7 @@ struct MagpieLiquidTabBar: View {
                     .minimumScaleFactor(0.8)
             }
             .padding(.horizontal, 3)
-            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
+            .modifier(TabItemFrame(isVertical: isVertical, width: Self.railWidth - 8))
             .contentShape(Rectangle())
             .background {
                 if isMoreOpen {
@@ -540,6 +573,20 @@ struct MagpieLiquidTabBar: View {
         .accessibilityValue(isMoreOpen ? String(localized: "已展开") : String(localized: "已收起"))
         .accessibilityHint(isMoreOpen ? String(localized: "轻点关闭更多菜单") : String(localized: "轻点展开更多页面"))
         .accessibilityAddTraits(isMoreOpen ? .isSelected : [])
+    }
+}
+
+/// 单个导航按钮的尺寸：横排均分宽度，竖排固定宽高。
+private struct TabItemFrame: ViewModifier {
+    let isVertical: Bool
+    let width: CGFloat
+
+    func body(content: Content) -> some View {
+        if isVertical {
+            content.frame(width: width, height: 50)
+        } else {
+            content.frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
+        }
     }
 }
 

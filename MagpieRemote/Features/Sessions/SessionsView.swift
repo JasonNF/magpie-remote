@@ -19,6 +19,8 @@ struct SessionsView: View {
         #endif
     }
     @State private var selectedAgent = ""
+    /// 筛选条可用宽度，用来决定一行放几个 Agent，其余收进「更多」。
+    @State private var filterWidth: CGFloat = 0
 
     private var agents: [String] {
         Array(Set(viewModel.sessions.map(\.agent))).sorted()
@@ -163,16 +165,122 @@ struct SessionsView: View {
             .frame(width: 1, height: 24)
     }
 
+    /// 一行放不下的 Agent 收进末尾的「更多」菜单，不再横向滚出屏幕。
     private var agentFilter: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                agentChip("", String(localized: "全部"))
-                ForEach(agents, id: \.self) { agent in
-                    agentChip(agent, viewModel.sessions.first { $0.agent == agent }?.displayAgent ?? agent)
+        let items: [(id: String, title: String)] = [("", String(localized: "全部"))]
+            + agents.map { agent in
+                (agent, viewModel.sessions.first { $0.agent == agent }?.displayAgent ?? agent)
+            }
+        let titles = items.map(\.title)
+        let selectedIndex = items.firstIndex { $0.id == selectedAgent }
+        let visibleCount = filterWidth > 0
+            ? Self.visibleChipCount(
+                widths: titles.map(Self.chipWidth),
+                available: filterWidth,
+                spacing: Self.chipSpacing,
+                moreWidth: { visible in
+                    if let selectedIndex, selectedIndex >= visible {
+                        return Self.moreChipWidth(titles[selectedIndex])
+                    }
+                    return Self.moreChipWidth(String(localized: "更多"))
                 }
+            )
+            : items.count
+        let overflow = Array(items.dropFirst(visibleCount))
+
+        return HStack(spacing: Self.chipSpacing) {
+            ForEach(items.prefix(visibleCount), id: \.id) { item in
+                agentChip(item.id, item.title)
+            }
+            if !overflow.isEmpty {
+                moreAgentsChip(overflow)
             }
         }
-        .scrollClipDisabled()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { filterWidth = $0 }
+    }
+
+    private func moreAgentsChip(_ overflow: [(id: String, title: String)]) -> some View {
+        let selected = overflow.first { $0.id == selectedAgent }
+        let isActive = selected != nil
+        return Menu {
+            ForEach(overflow, id: \.id) { item in
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        selectedAgent = item.id
+                    }
+                    MagpieHaptics.light()
+                } label: {
+                    if item.id == selectedAgent {
+                        Label(item.title, systemImage: "checkmark")
+                    } else {
+                        Text(item.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: Self.moreChevronGap) {
+                Text(selected?.title ?? String(localized: "更多"))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: Self.moreChevronSize, weight: .bold))
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(isActive ? MagpieTheme.accentSoft : MagpieTheme.pill)
+            .foregroundStyle(isActive ? MagpieTheme.accent : MagpieTheme.textSecondary)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule().stroke(
+                    isActive ? MagpieTheme.accent.opacity(0.3) : MagpieTheme.borderSubtle,
+                    lineWidth: 0.7
+                )
+            )
+            .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "更多 Agent"))
+        .accessibilityValue(selected?.title ?? "")
+    }
+
+    // MARK: 筛选条排布
+
+    static let chipSpacing: CGFloat = 7
+    private static let moreChevronSize: CGFloat = 8
+    private static let moreChevronGap: CGFloat = 3
+    private static let chipFont = UIFont.systemFont(ofSize: 11, weight: .semibold)
+
+    /// 与 `agentChip` 的样式一致：文字宽 + 左右各 11pt 内边距，再留 2pt 余量给描边与取整。
+    static func chipWidth(_ title: String) -> CGFloat {
+        ceil((title as NSString).size(withAttributes: [.font: chipFont]).width) + 22 + 2
+    }
+
+    static func moreChipWidth(_ title: String) -> CGFloat {
+        chipWidth(title) + moreChevronGap + moreChevronSize + 4
+    }
+
+    /// 一行里能完整显示几个筛选项。全放得下就全显示；否则给「更多」留位，至少保留「全部」。
+    /// `moreWidth` 接收可见数量，返回此时「更多」按钮的宽度（选中项被收起时按钮显示它的名字）。
+    static func visibleChipCount(
+        widths: [CGFloat],
+        available: CGFloat,
+        spacing: CGFloat,
+        moreWidth: (Int) -> CGFloat
+    ) -> Int {
+        guard !widths.isEmpty else { return 0 }
+        let total = widths.reduce(0, +) + spacing * CGFloat(widths.count - 1)
+        if total <= available { return widths.count }
+
+        var used: CGFloat = 0
+        var count = 0
+        for width in widths {
+            let next = used + (count > 0 ? spacing : 0) + width
+            if next + spacing + moreWidth(count + 1) > available { break }
+            used = next
+            count += 1
+        }
+        return max(count, 1)
     }
 
     private func agentChip(_ id: String, _ title: String) -> some View {
