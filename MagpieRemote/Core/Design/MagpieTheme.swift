@@ -143,13 +143,14 @@ enum MagpieHaptics {
     }
 }
 
-// MARK: - 呼吸光点指示器 (固定 12×12 布局边界，仅通过 GPU 变换缩放，彻底消除相邻视图抖动与动画漂移)
+// MARK: - 呼吸光点指示器 (固定 14×14 布局边界，扩散光环不参与布局)
+/// 光环的无限循环交给 Core Animation 在渲染进程里播放，外观与原先的 SwiftUI
+/// `repeatForever` 一致；但 SwiftUI 的无限动画会让 App 主线程每帧重新计算视图，
+/// 页面上多个状态点同时呼吸时会持续占用 CPU、导致发热。
 struct MagpiePulseDot: View {
-    static let pulseCount = 3
-
     let color: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isPulsing = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -158,38 +159,110 @@ struct MagpiePulseDot: View {
                 .fill(color)
                 .frame(width: 7, height: 7)
 
-            // 呼吸扩散光环：固定 frame，只通过 scaleEffect（GPU 渲染层变换，完全不触发布局重排）
             if !reduceMotion {
-                Circle()
-                    .stroke(color.opacity(0.55), lineWidth: 1.2)
-                    .frame(width: 7, height: 7)
-                    .scaleEffect(isPulsing ? 2.1 : 1.0)
-                    .opacity(isPulsing ? 0 : 0.85)
+                MagpiePulseRing(color: UIColor(color.opacity(0.55)), isActive: scenePhase == .active)
+                    .frame(width: 14, height: 14)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
         .frame(width: 14, height: 14)
-        .onAppear {
-            updatePulse()
-        }
-        .onChange(of: reduceMotion) { _, _ in
-            updatePulse()
+    }
+}
+
+/// 7pt 描边圆环从 1.0 倍放大到 2.1 倍并淡出，1.4 秒 easeOut 一轮，无限循环。
+struct MagpiePulseRing: UIViewRepresentable {
+    let color: UIColor
+    var isActive: Bool = true
+
+    func makeUIView(context: Context) -> MagpiePulseRingView {
+        MagpiePulseRingView()
+    }
+
+    func updateUIView(_ view: MagpiePulseRingView, context: Context) {
+        view.ringColor = color
+        view.setAnimating(isActive)
+    }
+}
+
+final class MagpiePulseRingView: UIView {
+    static let duration: CFTimeInterval = 1.4
+    private static let animationKey = "magpie.pulse"
+
+    private let ring = CAShapeLayer()
+    private var wantsAnimation = true
+
+    var ringColor: UIColor = .systemGreen {
+        didSet { applyColor() }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        clipsToBounds = false
+        ring.fillColor = UIColor.clear.cgColor
+        ring.lineWidth = 1.2
+        ring.opacity = 0
+        layer.addSublayer(ring)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let diameter: CGFloat = 7
+        ring.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+        ring.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        // 与 SwiftUI 的 Circle().stroke 一致：描边居中压在 7pt 圆的边线上
+        ring.path = UIBezierPath(ovalIn: ring.bounds).cgPath
+        installAnimationIfNeeded()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        installAnimationIfNeeded()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyColor()
+    }
+
+    func setAnimating(_ animating: Bool) {
+        guard animating != wantsAnimation else { return }
+        wantsAnimation = animating
+        if animating {
+            installAnimationIfNeeded()
+        } else {
+            ring.removeAnimation(forKey: Self.animationKey)
         }
     }
 
-    private func updatePulse() {
-        if reduceMotion {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                isPulsing = false
-            }
-        } else {
-            isPulsing = false
-            // 只呼吸几次就停：页面上常有多个状态点，无限循环会让界面一直逐帧重绘、持续耗电。
-            withAnimation(.easeOut(duration: 1.4).repeatCount(Self.pulseCount, autoreverses: false)) {
-                isPulsing = true
-            }
-        }
+    private func applyColor() {
+        ring.strokeColor = ringColor.resolvedColor(with: traitCollection).cgColor
+    }
+
+    /// 不在窗口里（切到其他页面）时不挂动画，回到窗口再挂上。
+    private func installAnimationIfNeeded() {
+        guard wantsAnimation, window != nil, ring.animation(forKey: Self.animationKey) == nil else { return }
+        applyColor()
+
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 1.0
+        scale.toValue = 2.1
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.85
+        fade.toValue = 0.0
+
+        let group = CAAnimationGroup()
+        group.animations = [scale, fade]
+        group.duration = Self.duration
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        group.repeatCount = .infinity
+        group.isRemovedOnCompletion = false
+        ring.add(group, forKey: Self.animationKey)
     }
 }
 

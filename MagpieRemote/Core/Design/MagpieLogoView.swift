@@ -11,11 +11,6 @@ struct MagpieLogoView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    /// 只在出现时摆动两下，随后停在静止姿态：常驻页面上一直 30fps 重绘三层蒙版很耗电。
-    @State private var isWagging = false
-
-    private static let wagCycle: Double = 0.9
-    private static let wagCycles: Double = 2
 
     var body: some View {
         HStack(spacing: 8) {
@@ -33,56 +28,10 @@ struct MagpieLogoView: View {
     @ViewBuilder
     private var birdGraphic: some View {
         if isAnimated && !reduceMotion {
-            TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 30.0, paused: !isWagging || scenePhase != .active)) { timeline in
-                let now = timeline.date.timeIntervalSinceReferenceDate
-                let cycle = Self.wagCycle
-                // 停止后回到关键帧起点（0°），不会定格在半途的歪斜姿态
-                let progress = isWagging ? (now.truncatingRemainder(dividingBy: cycle)) / cycle : 0
-
-                let tailAngle = Self.interpolate(
-                    t: progress,
-                    keyframes: [(0.0, 0.0), (0.18, 16.0), (0.36, -7.0), (0.54, 9.0), (0.72, -3.0), (0.86, 2.0), (1.0, 0.0)]
-                )
-                let wingAngle = Self.interpolate(
-                    t: progress,
-                    keyframes: [(0.0, 0.0), (0.12, 10.0), (0.26, -3.0), (0.40, 8.0), (0.56, -2.0), (0.72, 3.0), (1.0, 0.0)]
-                )
-                let bobAngle = Self.interpolate(
-                    t: progress,
-                    keyframes: [(0.0, 0.0), (0.18, -4.0), (0.40, 2.0), (0.62, -1.0), (1.0, 0.0)]
-                )
-
-                ZStack {
-                    // 身体部分 (bird-body clip)
-                    birdImage
-                        .mask(
-                            MagpieBirdClipShape(part: .body)
-                                .fill(.white, style: FillStyle(eoFill: true))
-                        )
-
-                    // 尾羽部分 (bird-tail clip, transform-origin: 14px 22px)
-                    birdImage
-                        .mask(
-                            MagpieBirdClipShape(part: .tail)
-                                .fill(.white)
-                        )
-                        .rotationEffect(.degrees(tailAngle), anchor: UnitPoint(x: 14.0 / 44.0, y: 22.0 / 44.0))
-
-                    // 翅膀部分 (bird-wing clip, transform-origin: 30px 19.8px)
-                    birdImage
-                        .mask(
-                            MagpieBirdClipShape(part: .wing)
-                                .fill(.white)
-                        )
-                        .rotationEffect(.degrees(wingAngle), anchor: UnitPoint(x: 30.0 / 44.0, y: 19.8 / 44.0))
-                }
-                .rotationEffect(.degrees(bobAngle), anchor: UnitPoint(x: 26.0 / 44.0, y: 38.0 / 44.0))
-            }
-            .task {
-                isWagging = true
-                try? await Task.sleep(for: .seconds(Self.wagCycle * Self.wagCycles))
-                isWagging = false
-            }
+            // 交给 Core Animation 在渲染进程里循环播放：动作与原先逐帧计算的版本一致，
+            // 但 App 主线程不再每秒 30 次重算三层蒙版视图（首页常驻时这是主要的发热来源）。
+            MagpieBirdWagView(isActive: scenePhase == .active)
+                .accessibilityHidden(true)
         } else {
             birdImage
         }
@@ -94,21 +43,6 @@ struct MagpieLogoView: View {
             .resizable()
             .scaledToFit()
             .foregroundStyle(MagpieTheme.textPrimary)
-    }
-
-    private static func interpolate(t: Double, keyframes: [(Double, Double)]) -> Double {
-        let clamped = min(max(t, 0.0), 1.0)
-        for i in 0..<(keyframes.count - 1) {
-            let (t0, a0) = keyframes[i]
-            let (t1, a1) = keyframes[i + 1]
-            if clamped >= t0 && clamped <= t1 {
-                let seg = (clamped - t0) / (t1 - t0)
-                // cubic-bezier(.3, 0, .3, 1) easeInOut 平滑插值
-                let s = seg * seg * (3.0 - 2.0 * seg)
-                return a0 + (a1 - a0) * s
-            }
-        }
-        return keyframes.last?.1 ?? 0.0
     }
 }
 
@@ -187,5 +121,123 @@ struct MagpieBirdClipShape: Shape {
             path.closeSubpath()
         }
         return path
+    }
+}
+
+// MARK: - Core Animation 版摆动小鸟
+
+/// 与 Web `.logo.wag` 相同的三段动作（尾巴摆动、翅膀扑动、整鸟微俯仰），
+/// 用 CAKeyframeAnimation 无限循环，由系统渲染进程驱动，不占用 App 主线程。
+struct MagpieBirdWagView: UIViewRepresentable {
+    var isActive: Bool = true
+
+    func makeUIView(context: Context) -> MagpieBirdWagUIView {
+        MagpieBirdWagUIView()
+    }
+
+    func updateUIView(_ view: MagpieBirdWagUIView, context: Context) {
+        view.setAnimating(isActive)
+    }
+}
+
+final class MagpieBirdWagUIView: UIView {
+    /// 一次完整摆动的时长，与原逐帧版本一致。
+    static let cycle: CFTimeInterval = 0.9
+
+    // (时间 0…1, 角度°)，与原 SwiftUI 版本的关键帧逐一对应
+    static let tailKeyframes: [(Double, Double)] = [(0.0, 0.0), (0.18, 16.0), (0.36, -7.0), (0.54, 9.0), (0.72, -3.0), (0.86, 2.0), (1.0, 0.0)]
+    static let wingKeyframes: [(Double, Double)] = [(0.0, 0.0), (0.12, 10.0), (0.26, -3.0), (0.40, 8.0), (0.56, -2.0), (0.72, 3.0), (1.0, 0.0)]
+    static let bobKeyframes: [(Double, Double)] = [(0.0, 0.0), (0.18, -4.0), (0.40, 2.0), (0.62, -1.0), (1.0, 0.0)]
+
+    private let bob = UIView()
+    private let body = UIImageView()
+    private let tail = UIImageView()
+    private let wing = UIImageView()
+    private var wantsAnimation = true
+    private static let animationKey = "magpie.wag"
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        addSubview(bob)
+        let image = UIImage(named: "magpie-logo")?.withRenderingMode(.alwaysTemplate)
+        for part in [body, tail, wing] {
+            part.image = image
+            part.contentMode = .scaleAspectFit
+            part.tintColor = .label
+            bob.addSubview(part)
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // 与 `.scaledToFit()` 一致：在视图内居中放一个正方形画布（44×44 viewBox）
+        let side = min(bounds.width, bounds.height)
+        let canvas = CGRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side)
+        place(bob, in: canvas, anchor: CGPoint(x: 26.0 / 44.0, y: 38.0 / 44.0))
+        let local = CGRect(origin: .zero, size: canvas.size)
+        place(body, in: local, anchor: CGPoint(x: 0.5, y: 0.5))
+        place(tail, in: local, anchor: CGPoint(x: 14.0 / 44.0, y: 22.0 / 44.0))
+        place(wing, in: local, anchor: CGPoint(x: 30.0 / 44.0, y: 19.8 / 44.0))
+        mask(body, part: .body, size: canvas.size, evenOdd: true)
+        mask(tail, part: .tail, size: canvas.size, evenOdd: false)
+        mask(wing, part: .wing, size: canvas.size, evenOdd: false)
+        installAnimationsIfNeeded()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        installAnimationsIfNeeded()
+    }
+
+    func setAnimating(_ animating: Bool) {
+        guard animating != wantsAnimation else { return }
+        wantsAnimation = animating
+        if animating {
+            installAnimationsIfNeeded()
+        } else {
+            [bob, tail, wing].forEach { $0.layer.removeAnimation(forKey: Self.animationKey) }
+        }
+    }
+
+    /// 不在窗口里（切到其他标签页、页面已关闭）时不挂动画；回来时重新挂上。
+    private func installAnimationsIfNeeded() {
+        guard wantsAnimation, window != nil, bounds.width > 0 else { return }
+        add(Self.tailKeyframes, to: tail.layer)
+        add(Self.wingKeyframes, to: wing.layer)
+        add(Self.bobKeyframes, to: bob.layer)
+    }
+
+    private func add(_ keyframes: [(Double, Double)], to layer: CALayer) {
+        guard layer.animation(forKey: Self.animationKey) == nil else { return }
+        let animation = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        animation.values = keyframes.map { $0.1 * .pi / 180 }
+        animation.keyTimes = keyframes.map { NSNumber(value: $0.0) }
+        // 原版每段用 smoothstep 缓动，对应 easeInEaseOut
+        animation.timingFunctions = Array(
+            repeating: CAMediaTimingFunction(name: .easeInEaseOut),
+            count: max(keyframes.count - 1, 1)
+        )
+        animation.duration = Self.cycle
+        animation.repeatCount = .infinity
+        animation.isRemovedOnCompletion = false
+        layer.add(animation, forKey: Self.animationKey)
+    }
+
+    private func place(_ view: UIView, in rect: CGRect, anchor: CGPoint) {
+        view.layer.anchorPoint = anchor
+        view.bounds = CGRect(origin: .zero, size: rect.size)
+        view.center = CGPoint(x: rect.minX + anchor.x * rect.width, y: rect.minY + anchor.y * rect.height)
+    }
+
+    private func mask(_ view: UIView, part: MagpieBirdClipShape.Part, size: CGSize, evenOdd: Bool) {
+        let shape = (view.layer.mask as? CAShapeLayer) ?? CAShapeLayer()
+        shape.frame = CGRect(origin: .zero, size: size)
+        shape.path = MagpieBirdClipShape(part: part).path(in: CGRect(origin: .zero, size: size)).cgPath
+        shape.fillRule = evenOdd ? .evenOdd : .nonZero
+        view.layer.mask = shape
     }
 }

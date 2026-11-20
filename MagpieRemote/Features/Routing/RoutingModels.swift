@@ -547,12 +547,27 @@ final class RoutingViewModel {
                     urlPath = "/api/gateway/trace?after=\(lastSeq)&wait=1"
                 }
 
+                let requestedAt = Date()
+                let previousSeq = lastSeq
+                let wasInitial = initial
+                // 服务器最多挂起 25 秒；默认 30 秒超时在移动网络下余量太小，超时会触发断线重连。
                 let trace: GatewayTraceDTO = try await client.send(
                     .get(urlPath),
-                    as: GatewayTraceDTO.self
+                    as: GatewayTraceDTO.self,
+                    timeout: 40
                 )
 
                 if Task.isCancelled { break }
+
+                // 防空转：若服务器不支持挂起、立即返回且没有新事件，循环会背靠背地请求，
+                // 持续占用 CPU 与网络。这种情况下稍等一秒再问。
+                if !wasInitial,
+                   (trace.seq ?? previousSeq) == previousSeq,
+                   (trace.routes ?? []).isEmpty,
+                   Date().timeIntervalSince(requestedAt) < 0.5 {
+                    try? await Task.sleep(for: .seconds(1))
+                    if Task.isCancelled { break }
+                }
 
                 if trace.mine == false {
                     resetLiveTrace()

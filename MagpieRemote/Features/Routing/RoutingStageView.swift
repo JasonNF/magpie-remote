@@ -1012,8 +1012,7 @@ private struct RoutingStageFliers: View {
     }
 
     var body: some View {
-        // 限制在 30fps：默认跟随屏幕刷新率（ProMotion 下 120Hz），每帧还带阴影滤镜，发热明显。
-        TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active)) { timeline in
+        TimelineView(.animation(paused: scenePhase != .active)) { timeline in
             let now = max(0, timeline.date.timeIntervalSince(startedAt))
             Canvas { context, _ in
                 for flight in flights {
