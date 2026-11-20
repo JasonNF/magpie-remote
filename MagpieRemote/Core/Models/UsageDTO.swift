@@ -319,7 +319,7 @@ enum QuotaDecoding {
     static func time<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ key: K) -> String? {
         if let s = try? c.decodeIfPresent(String.self, forKey: key) { return s }
         if let ms = try? c.decodeIfPresent(Double.self, forKey: key) {
-            return ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: ms / 1000))
+            return SharedFormatters.isoBasic.string(from: Date(timeIntervalSince1970: ms / 1000))
         }
         return nil
     }
@@ -330,21 +330,12 @@ enum QuotaFormat {
     /// 整数不带小数，小数最多两位，带千分位：6835 → "6,835"，6828.96 → "6,828.96"。
     /// 不对大数取整：剩余积分四舍五入会多报额度。
     static func amount(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.minimumFractionDigits = 0
-        f.maximumFractionDigits = 2
-        return f.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+        SharedFormatters.decimal2.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
     }
 
     static func date(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
-        let frac = ISO8601DateFormatter()
-        frac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = frac.date(from: raw) { return d }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        if let d = plain.date(from: raw) { return d }
+        if let d = SharedFormatters.parseISO(raw) { return d }
         if let ms = Double(raw) { return Date(timeIntervalSince1970: ms / 1000) }
         return nil
     }
@@ -352,12 +343,8 @@ enum QuotaFormat {
     /// 本地时间的短格式：同年省略年份，如「11/30 23:59」。
     static func shortDate(_ date: Date, now: Date = Date()) -> String {
         let cal = Calendar.current
-        let f = DateFormatter()
-        f.locale = Locale.current
-        f.setLocalizedDateFormatFromTemplate(
-            cal.component(.year, from: date) == cal.component(.year, from: now) ? "MMdHHmm" : "yyyyMMdHHmm"
-        )
-        return f.string(from: date)
+        let sameYear = cal.component(.year, from: date) == cal.component(.year, from: now)
+        return (sameYear ? SharedFormatters.localShort : SharedFormatters.localShortWithYear).string(from: date)
     }
 
     /// 原始时间字符串转短格式，解析失败时原样返回。

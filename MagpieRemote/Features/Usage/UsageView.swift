@@ -6,6 +6,7 @@ import UIKit
 /// 统计、账本、热力图、上下文全部来自 `/api/usage*`、`/api/sessions`、`/api/context`。
 struct UsageView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("magpie_mask_accounts") private var maskAccounts = false
 
     @State private var viewModel = UsageViewModel()
@@ -171,7 +172,7 @@ struct UsageView: View {
             .task(id: loadKey) {
                 guard let client = app.client else { return }
                 await viewModel.reloadForTab(client: client)
-                if viewModel.tab == .requests {
+                if viewModel.tab == .requests && scenePhase == .active {
                     viewModel.startTraffic(client: client)
                 } else {
                     viewModel.stopTraffic()
@@ -179,6 +180,14 @@ struct UsageView: View {
             }
             .onDisappear {
                 viewModel.stopTraffic()
+            }
+            // 锁屏或切到后台时停掉每秒一次的流量请求，回到前台再继续
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active, viewModel.tab == .requests, let client = app.client {
+                    viewModel.startTraffic(client: client)
+                } else if phase != .active {
+                    viewModel.stopTraffic()
+                }
             }
             .refreshable {
                 if let client = app.client {
@@ -1235,10 +1244,7 @@ struct UsageView: View {
     private var heatWeeks: [[HeatCell]] {
         guard let heatmap = viewModel.heatmap,
               let from = heatmap.from, let to = heatmap.to else { return [] }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = .current
+        let formatter = SharedFormatters.dayKey
         guard var day = formatter.date(from: from),
               let end = formatter.date(from: to) else { return [] }
 
@@ -1453,12 +1459,8 @@ struct UsageView: View {
     }
 
     private func formatTimeOnly(_ isoString: String) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: isoString) {
-            let out = DateFormatter()
-            out.dateFormat = "HH:mm:ss"
-            return out.string(from: d)
+        if let d = SharedFormatters.isoFractional.date(from: isoString) {
+            return SharedFormatters.timeOfDay.string(from: d)
         }
         return isoString
     }

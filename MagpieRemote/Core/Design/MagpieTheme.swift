@@ -145,6 +145,8 @@ enum MagpieHaptics {
 
 // MARK: - 呼吸光点指示器 (固定 12×12 布局边界，仅通过 GPU 变换缩放，彻底消除相邻视图抖动与动画漂移)
 struct MagpiePulseDot: View {
+    static let pulseCount = 3
+
     let color: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPulsing = false
@@ -183,7 +185,8 @@ struct MagpiePulseDot: View {
             }
         } else {
             isPulsing = false
-            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
+            // 只呼吸几次就停：页面上常有多个状态点，无限循环会让界面一直逐帧重绘、持续耗电。
+            withAnimation(.easeOut(duration: 1.4).repeatCount(Self.pulseCount, autoreverses: false)) {
                 isPulsing = true
             }
         }

@@ -2,6 +2,7 @@ import SwiftUI
 import XCTest
 @testable import MagpieRemote
 
+@MainActor
 final class NavigationLayoutTests: XCTestCase {
     func testAllChipsShownWhenTheyFit() {
         let count = SessionsView.visibleChipCount(
@@ -57,5 +58,15 @@ final class NavigationLayoutTests: XCTestCase {
             size: CGSize(width: 402, height: 800),
             insets: EdgeInsets(top: 62, leading: 0, bottom: 34, trailing: 0)
         ))
+    }
+
+    func testSharedFormattersParseBothISOForms() {
+        XCTAssertNotNil(SharedFormatters.parseISO("2026-11-30T15:59:59Z"))
+        XCTAssertNotNil(SharedFormatters.parseISO("2026-11-21T02:44:28.198Z"))
+        XCTAssertNil(SharedFormatters.parseISO("not a date"))
+        XCTAssertNil(SharedFormatters.parseISO(nil))
+        let date = SharedFormatters.parseISO("2026-11-20T10:00:00Z")!
+        XCTAssertEqual(SharedFormatters.dayKey.string(from: date).count, 10)
+        XCTAssertEqual(SharedFormatters.timeOfDay.string(from: date).count, 8)
     }
 }

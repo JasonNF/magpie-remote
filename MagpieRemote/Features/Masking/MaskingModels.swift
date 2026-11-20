@@ -104,16 +104,7 @@ struct MaskingRecordDTO: Codable, Sendable, Identifiable, Hashable {
     var isBlocked: Bool { blocked ?? false }
 
     var date: Date? {
-        guard let t else { return nil }
-        // ISO8601DateFormatter 不是 Sendable，不能做成静态共享实例；
-        // 只在展示记录时按需创建，避免 Swift 6 的并发检查。
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: t) { return date }
-
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: t)
+        SharedFormatters.parseISO(t)
     }
 }
 

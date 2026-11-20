@@ -599,12 +599,8 @@ struct GatewayView: View {
 
     private func callTime(_ raw: String?) -> String {
         guard let raw else { return "—" }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: raw) {
-            let f = DateFormatter()
-            f.dateFormat = "HH:mm:ss"
-            return f.string(from: date)
+        if let date = SharedFormatters.isoFractional.date(from: raw) {
+            return SharedFormatters.timeOfDay.string(from: date)
         }
         return String(raw.prefix(8))
     }

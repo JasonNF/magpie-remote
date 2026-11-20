@@ -220,14 +220,7 @@ struct GatewayRouteDTO: Decodable, Sendable, Identifiable, Hashable {
     var date: Date? { parsedDate }
 
     private static func parseISO8601(_ raw: String?) -> Date? {
-        guard let raw else { return nil }
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: raw) { return date }
-
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: raw)
+        SharedFormatters.parseISO(raw)
     }
 
     /// 有效会话标识（合并 parentSession）
@@ -863,16 +856,12 @@ enum RoutingFormat {
 
     static func time(_ date: Date?) -> String {
         guard let date else { return "—" }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
-        return f.string(from: date)
+        return SharedFormatters.timeOfDay.string(from: date)
     }
 
     static func dateShort(_ date: Date?) -> String {
         guard let date else { return "" }
-        let f = DateFormatter()
-        f.dateFormat = "MM-dd HH:mm"
-        return f.string(from: date)
+        return SharedFormatters.monthDayTime.string(from: date)
     }
 
     static func statusText(_ route: GatewayRouteDTO) -> String {

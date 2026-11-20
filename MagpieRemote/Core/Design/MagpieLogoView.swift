@@ -11,6 +11,11 @@ struct MagpieLogoView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    /// 只在出现时摆动两下，随后停在静止姿态：常驻页面上一直 30fps 重绘三层蒙版很耗电。
+    @State private var isWagging = false
+
+    private static let wagCycle: Double = 0.9
+    private static let wagCycles: Double = 2
 
     var body: some View {
         HStack(spacing: 8) {
@@ -28,10 +33,11 @@ struct MagpieLogoView: View {
     @ViewBuilder
     private var birdGraphic: some View {
         if isAnimated && !reduceMotion {
-            TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active)) { timeline in
+            TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 30.0, paused: !isWagging || scenePhase != .active)) { timeline in
                 let now = timeline.date.timeIntervalSinceReferenceDate
-                let cycle = 0.9
-                let progress = (now.truncatingRemainder(dividingBy: cycle)) / cycle
+                let cycle = Self.wagCycle
+                // 停止后回到关键帧起点（0°），不会定格在半途的歪斜姿态
+                let progress = isWagging ? (now.truncatingRemainder(dividingBy: cycle)) / cycle : 0
 
                 let tailAngle = Self.interpolate(
                     t: progress,
@@ -71,6 +77,11 @@ struct MagpieLogoView: View {
                         .rotationEffect(.degrees(wingAngle), anchor: UnitPoint(x: 30.0 / 44.0, y: 19.8 / 44.0))
                 }
                 .rotationEffect(.degrees(bobAngle), anchor: UnitPoint(x: 26.0 / 44.0, y: 38.0 / 44.0))
+            }
+            .task {
+                isWagging = true
+                try? await Task.sleep(for: .seconds(Self.wagCycle * Self.wagCycles))
+                isWagging = false
             }
         } else {
             birdImage
