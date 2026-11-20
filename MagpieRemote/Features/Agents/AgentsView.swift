@@ -289,13 +289,19 @@ struct AgentsView: View {
                                 }
                             }
 
-                            if let window = quota.windows?.first {
+                            if let window = quota.creditSummaryWindow ?? quota.windows?.first {
                                 HStack(spacing: 5) {
-                                    ProgressView(value: min(window.percentUsed, 100), total: 100)
+                                    ProgressView(value: window.percentUsed, total: 100)
                                         .tint(window.percentUsed > 80 ? MagpieTheme.red : MagpieTheme.accent)
-                                    Text(String(format: "%.0f%%", window.percentUsed))
-                                        .font(.system(size: 9.5, design: .monospaced))
-                                        .foregroundStyle(MagpieTheme.textMuted)
+                                    if window.isCreditCount, let left = window.leftAmount {
+                                        Text(String(localized: "可用 \(QuotaFormat.amount(left))"))
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .foregroundStyle(MagpieTheme.textMuted)
+                                    } else {
+                                        Text(window.percentText)
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .foregroundStyle(MagpieTheme.textMuted)
+                                    }
                                 }
                             } else {
                                 Text(quota.user.map { "\(quota.provider) · \($0)" } ?? quota.provider)

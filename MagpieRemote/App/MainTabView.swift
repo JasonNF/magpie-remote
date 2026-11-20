@@ -250,6 +250,12 @@ struct MainTabView: View {
             if ProcessInfo.processInfo.environment["MAGPIE_DEV_TAB"] == "more" {
                 compactSelection = tabStore.pinnedTabs.first ?? .agents
                 isMoreBubblePresented = true
+            } else if let raw = ProcessInfo.processInfo.environment["MAGPIE_DEV_TAB"],
+                      let page = AppPage(rawValue: raw),
+                      page != .more,
+                      !tabStore.pinnedTabs.contains(page) {
+                // 未固定在底栏的页面（如用量）按「更多」里的方式以 sheet 打开
+                activePresentedPage = page
             }
             #endif
         }

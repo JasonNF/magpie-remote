@@ -409,8 +409,14 @@ struct UsageView: View {
     }
 
     private func quotaSubtitle(_ quota: QuotaItemDTO) -> String {
-        guard let user = quota.user, !user.isEmpty else { return quota.provider }
-        return "\(quota.provider) · \(RoutingFormat.maskString(user, isMasked: maskAccounts))"
+        var parts = [quota.provider]
+        if let user = quota.user, !user.isEmpty {
+            parts.append(RoutingFormat.maskString(user, isMasked: maskAccounts))
+        }
+        if let plan = quota.plan, !plan.isEmpty {
+            parts.append(plan)
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func quotaCard(_ quota: QuotaItemDTO) -> some View {
@@ -430,6 +436,20 @@ struct UsageView: View {
                 }
 
                 Spacer(minLength: 4)
+
+                // 卡片头部直接给出可用积分，扫一眼就能比较各账号
+                if let summary = quota.creditSummaryWindow, let left = summary.leftAmount {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(QuotaFormat.amount(left))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(summary.percentUsed > 80 ? MagpieTheme.amber : MagpieTheme.green)
+                        Text(String(localized: "可用\(summary.unitLabel)"))
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(MagpieTheme.textMuted)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
 
                 // 快捷刷新单项配额
                 Button {
@@ -455,42 +475,25 @@ struct UsageView: View {
                 }
             }
 
+            if let error = quota.error, !error.isEmpty {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(MagpieTheme.red)
+                    .lineLimit(3)
+            } else if quota.hasNoData {
+                Text(String(localized: "暂未读到额度，点右上角刷新"))
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(MagpieTheme.textMuted)
+            }
+
             if let windows = quota.windows, !windows.isEmpty {
-                VStack(spacing: 5) {
-                    ForEach(Array(windows.enumerated()), id: \.offset) { _, win in
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack {
-                                Text(win.name)
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(MagpieTheme.textSecondary)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(String(format: "%.0f%%", win.percentUsed))
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(win.percentUsed > 80 ? MagpieTheme.amber : MagpieTheme.accent)
-                            }
-
-                            // 进度槽
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                        .fill(MagpieTheme.pill)
-                                        .frame(height: 3.5)
-
-                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                        .fill(win.percentUsed > 80 ? MagpieTheme.amber.gradient : MagpieTheme.accent.gradient)
-                                        .frame(width: max(geo.size.width * CGFloat(min(win.percentUsed / 100.0, 1.0)), 2), height: 3.5)
-                                }
-                            }
-                            .frame(height: 3.5)
-
-                            if let reset = win.resetsAt, !reset.isEmpty {
-                                Text("重置: \(reset)")
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(MagpieTheme.textMuted)
-                                    .lineLimit(1)
-                            }
+                VStack(spacing: 7) {
+                    ForEach(Array(windows.enumerated()), id: \.offset) { index, win in
+                        // 同一批积分包会同时出现在「额外积分」和「积分合计」，过期提示只显示一次
+                        let repeatsExpiry = windows.prefix(index).contains {
+                            $0.expiringSoon != nil && $0.runsOutAt == win.runsOutAt
                         }
+                        quotaWindowRow(win, showsExpiry: !repeatsExpiry)
                     }
                 }
             }
@@ -503,6 +506,79 @@ struct UsageView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(MagpieTheme.borderSubtle, lineWidth: 0.8)
         )
+    }
+
+    private func quotaWindowRow(_ win: QuotaItemDTO.QuotaWindowDTO, showsExpiry: Bool = true) -> some View {
+        let tint = win.percentUsed > 80 ? MagpieTheme.amber : MagpieTheme.accent
+        let expiring = showsExpiry ? win.expiringSoon : nil
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(win.displayName)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(MagpieTheme.textSecondary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if let count = win.countText {
+                    Text(count)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(MagpieTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Text(win.percentText)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(tint)
+                    .frame(minWidth: 34, alignment: .trailing)
+            }
+
+            // 进度槽：占比未知时不画填充，避免误读成 0%
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(MagpieTheme.pill)
+                        .frame(height: 3.5)
+
+                    if win.hasPercent {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(tint.gradient)
+                            .frame(width: max(geo.size.width * CGFloat(win.percentUsed / 100.0), 2), height: 3.5)
+                    }
+                }
+            }
+            .frame(height: 3.5)
+
+            let meta = quotaWindowMeta(win)
+            if !meta.isEmpty || expiring != nil {
+                HStack(spacing: 6) {
+                    if !meta.isEmpty {
+                        Text(meta)
+                            .foregroundStyle(MagpieTheme.textMuted)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    if let expiring {
+                        let soon = expiring.date.timeIntervalSinceNow < 48 * 3600
+                        Text(String(localized: "\(QuotaFormat.amount(expiring.amount)) \(win.unitLabel)于 \(QuotaFormat.shortDate(expiring.date)) 过期"))
+                            .foregroundStyle(soon ? MagpieTheme.amber : MagpieTheme.textMuted)
+                            .lineLimit(1)
+                    }
+                }
+                .font(.system(size: 8))
+                .monospacedDigit()
+            }
+        }
+    }
+
+    /// 窗口下方的一行说明：剩余数量 · 重置时间。
+    private func quotaWindowMeta(_ win: QuotaItemDTO.QuotaWindowDTO) -> String {
+        var parts: [String] = []
+        if win.isCreditCount, let left = win.leftAmount {
+            parts.append(String(localized: "剩余 \(QuotaFormat.amount(left))"))
+        }
+        if let reset = win.resetsAt, !reset.isEmpty {
+            parts.append(String(localized: "\(QuotaFormat.shortDate(reset)) 重置"))
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - 4大核心指标看板 (Metrics Grid)

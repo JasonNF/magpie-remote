@@ -222,6 +222,61 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(Set(quotas.map(\.id)).count, quotas.count)
     }
 
+    func testWorkBuddyCreditsDecodeAsAmountsAndPercent() throws {
+        let json = """
+        [
+          {"provider": "workbuddy", "name": "WorkBuddy", "plan": "Free plan", "user": "fixture",
+           "windows": [
+             {"name": "Credits", "used": 0, "resetsAt": "2026-11-30T15:59:59Z", "display": "0 / 500", "limit": 500, "unit": "credits"},
+             {"name": "Extra credits", "used": 0.09534333070244673, "display": "6.04 / 6335", "amount": 6.04, "limit": 6335,
+              "unit": "credits", "runsOutAt": "2099-01-01T00:00:00Z", "runsOut": 99.96, "trayExtra": true},
+             {"name": "Total credits", "used": 0.08836869056327724, "resetsAt": "2026-11-30T15:59:59Z", "display": "6.04 / 6835",
+              "amount": 6.04, "limit": 6835, "unit": "credits", "holdsWhy": "low"},
+             {"name": "deepseek-v4.1-flash tokens (est.)", "used": 0.042717, "display": "85k / ~200M", "amount": 85434, "limit": 200000000}
+           ]},
+          {"provider": "workbuddy", "name": "WorkBuddy", "user": "broken", "error": "sign in again", "windows": [{"name": 3}]},
+          {"provider": "codex", "name": "Codex", "windows": [{"name": "Image generation", "used": 0, "display": "Unknown"}, {"name": "Weekly"}]}
+        ]
+        """.data(using: .utf8)!
+
+        let quotas = try JSONDecoder().decode([QuotaItemDTO].self, from: json)
+        XCTAssertEqual(quotas.count, 3)
+
+        let wb = quotas[0]
+        XCTAssertEqual(wb.plan, "Free plan")
+        let extra = try XCTUnwrap(wb.windows?[1])
+        // used 是百分比：0.095 表示 0.095%，不能放大成 9.5%
+        XCTAssertEqual(extra.percentUsed, 0.09534333070244673, accuracy: 1e-9)
+        XCTAssertEqual(extra.percentText, "<0.1%")
+        XCTAssertTrue(extra.isCreditCount)
+        XCTAssertEqual(extra.countText, "6.04 / 6,335")
+        XCTAssertEqual(try XCTUnwrap(extra.leftAmount), 6328.96, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(extra.expiringSoon?.amount), 99.96, accuracy: 1e-9)
+        XCTAssertEqual(extra.displayName, String(localized: "额外积分"))
+
+        let summary = try XCTUnwrap(wb.creditSummaryWindow)
+        XCTAssertEqual(summary.name, "Total credits")
+        XCTAssertEqual(try XCTUnwrap(summary.leftAmount), 6828.96, accuracy: 1e-6)
+        XCTAssertEqual(QuotaFormat.amount(6828.96), "6,828.96")
+
+        let tokens = try XCTUnwrap(wb.windows?[3])
+        XCTAssertFalse(tokens.isCreditCount)
+        XCTAssertEqual(tokens.countText, "85k / ~200M")
+
+        // 单个窗口字段异常只丢掉该窗口，账号和错误信息仍保留
+        XCTAssertEqual(quotas[1].error, "sign in again")
+        XCTAssertEqual(quotas[1].windows?.count, 0)
+        XCTAssertTrue(quotas[1].hasNoData)
+
+        // 缺省 used 表示未知，不是 0%；display "Unknown" 不当作计数展示
+        let codex = quotas[2]
+        XCTAssertNil(codex.windows?[0].countText)
+        XCTAssertFalse(try XCTUnwrap(codex.windows?[1]).hasPercent)
+        XCTAssertEqual(codex.windows?[1].percentText, "—")
+        XCTAssertEqual(codex.windows?[0].percentUsed, 0)
+        XCTAssertEqual(QuotaItemDTO.QuotaWindowDTO(name: "5 hours", used: 18).percentText, "18%")
+    }
+
     func testExtractCleanURLAndKey() {
         let input = "https://magpie.example.invalid/?k=fixture-web-key"
         let (clean, key) = ConnectionEditViewModel.extractCleanURLAndKey(from: input)
