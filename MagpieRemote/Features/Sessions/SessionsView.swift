@@ -338,7 +338,7 @@ private struct SessionDetailView: View {
                     Button {
                         exportToServer()
                     } label: {
-                        Label(String(localized: "导出到服务器 Downloads"), systemImage: "externaldrive.badge.arrow.down")
+                        Label(String(localized: "导出到服务器 Downloads"), systemImage: "tray.and.arrow.down")
                     }
 
                     if let carry = session.carry, !carry.isEmpty {

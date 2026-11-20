@@ -307,20 +307,40 @@ struct RoutingStageCard: View {
     }
 
     private func stat(_ title: String, _ value: Int, _ status: RouteFilterStatus, _ color: Color) -> some View {
-        Button {
+        let isSelected = filterStatus == status
+        let showChip = isSelected && status != .all
+        return Button {
+            MagpieHaptics.light()
             onFilter(status)
         } label: {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(RoutingStagePalette.count(value))
                     .font(.system(size: 19, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(filterStatus == status ? color : MagpieTheme.textSecondary)
+                    .foregroundStyle(isSelected ? color : MagpieTheme.textSecondary)
                 Text(title)
-                    .font(.system(size: 10))
-                    .foregroundStyle(MagpieTheme.textMuted)
+                    .font(.system(size: 10, weight: showChip ? .semibold : .regular))
+                    .foregroundStyle(showChip ? color : MagpieTheme.textMuted)
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+            .background {
+                if showChip {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(color.opacity(0.12))
+                }
+            }
+            .overlay {
+                if showChip {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(color.opacity(0.35), lineWidth: 0.8)
+                }
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -405,29 +425,38 @@ enum RoutingStagePalette {
         return "\(value)"
     }
 
+    @MainActor private static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    @MainActor private static let isoBasic: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    @MainActor private static let resetFallbackFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM-dd HH:mm"
+        return formatter
+    }()
+
     static func amount(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value.rounded()))"
+        Int(value.rounded()).formatted(.number)
     }
 
+    @MainActor
     static func reset(_ raw: String) -> String? {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var date = iso.date(from: raw)
-        if date == nil {
-            iso.formatOptions = [.withInternetDateTime]
-            date = iso.date(from: raw)
+        guard let date = isoFractional.date(from: raw) ?? isoBasic.date(from: raw) else {
+            return nil
         }
-        guard let date else { return nil }
         let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day
         if let days, days >= 0, days <= 30 {
             return days == 0 ? String(localized: "今天") : String(localized: "\(days) 天后")
         }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd HH:mm"
-        return formatter.string(from: date)
+        return resetFallbackFormatter.string(from: date)
     }
 }
 
@@ -589,62 +618,67 @@ private struct RoutingStageAccountsColumn: View {
     }
 
     private func header(_ group: GatewayGroupRefDTO) -> some View {
-        HStack(spacing: 7) {
-            MagpieIconView(
-                icon: accounts.first?.icon ?? group.id,
-                name: group.displayName,
-                size: 18,
-                cornerRadius: 4
-            )
-
-            Text(group.displayName)
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(MagpieTheme.textPrimary)
-                .lineLimit(1)
-
-            Text(group.ref ?? accounts.first?.model ?? "")
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundStyle(MagpieTheme.textMuted)
-                .lineLimit(1)
-                .layoutPriority(-1)
-
-            Spacer(minLength: 4)
-
-            let groupRouting = group.routing ?? ""
-            let accountRouting = accounts
-                .first(where: { !($0.routing ?? "").isEmpty })?
-                .routing
-            let routing = groupRouting.isEmpty ? (accountRouting ?? "smart") : groupRouting
-            if let strategy = RoutingStagePalette.strategyShort(routing) {
-                Text(strategy)
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(MagpieTheme.textSecondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .overlay(
-                        Capsule().stroke(MagpieTheme.border, lineWidth: 1)
-                    )
-            }
-
-            Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(MagpieTheme.textMuted)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(MagpieTheme.cardSecondary)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(MagpieTheme.border, style: StrokeStyle(lineWidth: 1, dash: expanded ? [] : [4, 3]))
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button {
             withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
             MagpieHaptics.light()
+        } label: {
+            HStack(spacing: 7) {
+                MagpieIconView(
+                    icon: accounts.first?.icon ?? group.id,
+                    name: group.displayName,
+                    size: 18,
+                    cornerRadius: 4
+                )
+
+                Text(group.displayName)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(MagpieTheme.textPrimary)
+                    .lineLimit(1)
+
+                Text(group.ref ?? accounts.first?.model ?? "")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(MagpieTheme.textMuted)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
+
+                Spacer(minLength: 4)
+
+                let groupRouting = group.routing ?? ""
+                let accountRouting = accounts
+                    .first(where: { !($0.routing ?? "").isEmpty })?
+                    .routing
+                let routing = groupRouting.isEmpty ? (accountRouting ?? "smart") : groupRouting
+                if let strategy = RoutingStagePalette.strategyShort(routing) {
+                    Text(strategy)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(MagpieTheme.textSecondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .overlay(
+                            Capsule().stroke(MagpieTheme.border, lineWidth: 1)
+                        )
+                }
+
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(MagpieTheme.textMuted)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(minHeight: 36)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(MagpieTheme.cardSecondary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(MagpieTheme.border, style: StrokeStyle(lineWidth: 1, dash: expanded ? [] : [4, 3]))
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityValue(expanded ? String(localized: "已展开") : String(localized: "已收起"))
+        .accessibilityHint(String(localized: "轻点切换候选账号列表"))
     }
 }
 
@@ -898,6 +932,7 @@ private struct RoutingStageWires: View {
 private struct RoutingStageFliers: View {
     let flights: [RoutingFlight]
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var startedAt = Date()
 
     static func makeFlights(
@@ -977,30 +1012,34 @@ private struct RoutingStageFliers: View {
     }
 
     var body: some View {
-        TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 15.0)) { timeline in
+        TimelineView(.animation(paused: scenePhase != .active)) { timeline in
             let now = max(0, timeline.date.timeIntervalSince(startedAt))
-            ZStack(alignment: .topLeading) {
-                ForEach(flights) { flight in
-                    if let pose = flight.pose(at: now) {
-                        flyingBird(flight: flight, pose: pose, now: now)
+            Canvas { context, _ in
+                for flight in flights {
+                    guard let pose = flight.pose(at: now), pose.opacity > 0.001 else { continue }
+                    let bob = CGFloat(sin(now * 9 + flight.delay * 5) * 1.4)
+                    let bank = max(min(pose.angle * 0.22, CGFloat.pi / 10), -CGFloat.pi / 10)
+                    let flapProg = (now + flight.delay).truncatingRemainder(dividingBy: 0.42) / 0.42
+
+                    context.drawLayer { layer in
+                        layer.opacity = Double(pose.opacity)
+                        layer.addFilter(.shadow(color: flight.color.opacity(0.35), radius: 3))
+                        layer.translateBy(x: pose.point.x, y: pose.point.y + bob)
+                        layer.rotate(by: .radians(bank))
+                        if pose.dx < 0 {
+                            layer.scaleBy(x: -1, y: 1)
+                        }
+                        RoutingMagpieBird.draw(
+                            in: &layer,
+                            color: flight.color,
+                            progress: flapProg,
+                            isReturn: flight.reversed
+                        )
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-
-    private func flyingBird(flight: RoutingFlight, pose: RoutingFlightPose, now: TimeInterval) -> some View {
-        let bob = CGFloat(sin(now * 9 + flight.delay * 5) * 1.4)
-        let bank = max(min(pose.angle * 0.22, CGFloat.pi / 10), -CGFloat.pi / 10)
-        let flapProg = (now + flight.delay).truncatingRemainder(dividingBy: 0.42) / 0.42
-
-        return OriginalFlyingMagpie(color: flight.color, progress: flapProg, isReturn: flight.reversed)
-            .scaleEffect(x: pose.dx >= 0 ? 1 : -1, y: 1)
-            .rotationEffect(.radians(bank))
-            .shadow(color: flight.color.opacity(0.38), radius: 3)
-            .opacity(pose.opacity)
-            .position(x: pose.point.x, y: pose.point.y + bob)
     }
 }
 
@@ -1084,111 +1123,111 @@ private struct RoutingCubic {
 /// - 面向右侧，喙尖叼着当前请求的 packet 能量点（能量点中心与舞台虚线点 1:1 重合）
 /// - 远侧翅膀与近侧翅膀自肩部按 rtflap 0.42s 周期真实扑动（scaleY: 1.0 -> -0.62，伴随 -8° 扇动倾角）
 /// - 躯干、白色腹部、近侧翅膀白条纹与喙部 1:1 纯量级对齐 Web SVG
-private struct OriginalFlyingMagpie: View {
-    let color: Color
-    let progress: Double // 0...1 (0.42s 周期)
-    var isReturn: Bool = false
+private enum RoutingMagpieBird {
+    private static let baseTransform = CGAffineTransform(translationX: -6.5, y: 3.2)
+        .concatenating(CGAffineTransform(scaleX: 1.2, y: 1.2))
 
-    var body: some View {
-        Canvas { context, size in
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+    private static let farShoulder = CGPoint(x: -11.5, y: -3.3)
+    private static let nearShoulder = CGPoint(x: -12.0, y: -3.0)
 
-            let p = min(max(CGFloat(progress), 0), 1)
-            let (nearScaleY, nearSkew) = flapTransform(t: p)
+    private static let farWingPath: Path = {
+        var p = Path()
+        p.move(to: CGPoint(x: -14.5, y: -3.4))
+        p.addCurve(to: CGPoint(x: -8.6, y: -18.6), control1: CGPoint(x: -16.5, y: -9.5), control2: CGPoint(x: -14.2, y: -15.0))
+        p.addCurve(to: CGPoint(x: -9.2, y: -3.2), control1: CGPoint(x: -9.4, y: -12.6), control2: CGPoint(x: -9.6, y: -7.4))
+        p.closeSubpath()
+        return p
+    }()
 
-            let farP = CGFloat((progress + 0.0714).truncatingRemainder(dividingBy: 1.0))
-            let (farScaleY, farSkew) = flapTransform(t: farP)
+    private static let tailPath: Path = {
+        var p = Path()
+        p.move(to: CGPoint(x: -31.5, y: 3.1))
+        p.addLine(to: CGPoint(x: -18.6, y: -1.8))
+        p.addLine(to: CGPoint(x: -17.4, y: 1.2))
+        p.addLine(to: CGPoint(x: -30.8, y: 4.6))
+        p.closeSubpath()
+        return p.applying(baseTransform)
+    }()
 
-            // 基础变换：内部 (x, y) 先平移 (-6.5, 3.2)，再放大 1.2 倍，并对齐到 center
-            let baseTransform = CGAffineTransform(translationX: -6.5, y: 3.2)
-                .concatenating(CGAffineTransform(scaleX: 1.2, y: 1.2))
-                .concatenating(CGAffineTransform(translationX: center.x, y: center.y))
+    private static let bodyPath: Path = {
+        var p = Path()
+        p.addEllipse(in: CGRect(x: -12.2 - 7.6, y: -1.4 - 3.9, width: 15.2, height: 7.8))
+        p.addEllipse(in: CGRect(x: -4.9 - 3.1, y: -3.7 - 3.1, width: 6.2, height: 6.2))
+        p.move(to: CGPoint(x: -2.3, y: -4.8))
+        p.addLine(to: CGPoint(x: 1.4, y: -3.3))
+        p.addLine(to: CGPoint(x: -2.3, y: -2.2))
+        p.closeSubpath()
+        return p.applying(baseTransform)
+    }()
 
-            // 1. 远侧翅膀 (.wing.far, opacity 0.45)
-            let farShoulder = CGPoint(x: -11.5, y: -3.3)
-            let farWingTransform = wingTransform(shoulder: farShoulder, scaleY: farScaleY, skew: farSkew)
-                .concatenating(baseTransform)
-            var farWingPath = Path()
-            farWingPath.move(to: CGPoint(x: -14.5, y: -3.4))
-            farWingPath.addCurve(to: CGPoint(x: -8.6, y: -18.6), control1: CGPoint(x: -16.5, y: -9.5), control2: CGPoint(x: -14.2, y: -15.0))
-            farWingPath.addCurve(to: CGPoint(x: -9.2, y: -3.2), control1: CGPoint(x: -9.4, y: -12.6), control2: CGPoint(x: -9.6, y: -7.4))
-            farWingPath.closeSubpath()
-            context.fill(farWingPath.applying(farWingTransform), with: .color(color.opacity(0.45)))
+    private static let bellyPath: Path = {
+        var p = Path()
+        p.addEllipse(in: CGRect(x: -12.8 - 4.3, y: 0.4 - 1.6, width: 8.6, height: 3.2))
+        return p.applying(baseTransform)
+    }()
 
-            // 2. 尾巴 (.tail)
-            var tailPath = Path()
-            tailPath.move(to: CGPoint(x: -31.5, y: 3.1))
-            tailPath.addLine(to: CGPoint(x: -18.6, y: -1.8))
-            tailPath.addLine(to: CGPoint(x: -17.4, y: 1.2))
-            tailPath.addLine(to: CGPoint(x: -30.8, y: 4.6))
-            tailPath.closeSubpath()
-            context.fill(tailPath.applying(baseTransform), with: .color(color))
+    private static let nearWingPath: Path = {
+        var p = Path()
+        p.move(to: CGPoint(x: -15.6, y: -3.2))
+        p.addCurve(to: CGPoint(x: -8.4, y: -20.4), control1: CGPoint(x: -17.8, y: -10.2), control2: CGPoint(x: -15.2, y: -16.4))
+        p.addCurve(to: CGPoint(x: -8.8, y: -2.8), control1: CGPoint(x: -9.3, y: -13.6), control2: CGPoint(x: -9.4, y: -7.8))
+        p.closeSubpath()
+        return p
+    }()
 
-            // 3. 躯干 (.body)
-            var bodyPath = Path()
-            bodyPath.addEllipse(in: CGRect(x: -12.2 - 7.6, y: -1.4 - 3.9, width: 15.2, height: 7.8))
-            bodyPath.addEllipse(in: CGRect(x: -4.9 - 3.1, y: -3.7 - 3.1, width: 6.2, height: 6.2))
-            bodyPath.move(to: CGPoint(x: -2.3, y: -4.8))
-            bodyPath.addLine(to: CGPoint(x: 1.4, y: -3.3))
-            bodyPath.addLine(to: CGPoint(x: -2.3, y: -2.2))
-            bodyPath.closeSubpath()
-            context.fill(bodyPath.applying(baseTransform), with: .color(color))
+    private static let nearBarPath: Path = {
+        var p = Path()
+        p.move(to: CGPoint(x: -14.6, y: -5.6))
+        p.addCurve(to: CGPoint(x: -10.4, y: -17.2), control1: CGPoint(x: -15.4, y: -10.4), control2: CGPoint(x: -13.8, y: -14.4))
+        return p
+    }()
 
-            // 4. 白色腹部 (.belly)
-            var bellyPath = Path()
-            bellyPath.addEllipse(in: CGRect(x: -12.8 - 4.3, y: 0.4 - 1.6, width: 8.6, height: 3.2))
-            context.fill(bellyPath.applying(baseTransform), with: .color(MagpieTheme.card))
+    private static let dotPath = Path(ellipseIn: CGRect(x: -4.5, y: -4.5, width: 9, height: 9))
 
-            // 5. 近侧翅膀 (.wing.near)
-            let nearShoulder = CGPoint(x: -12.0, y: -3.0)
-            let nearWingTransform = wingTransform(shoulder: nearShoulder, scaleY: nearScaleY, skew: nearSkew)
-                .concatenating(baseTransform)
+    static func draw(in context: inout GraphicsContext, color: Color, progress: Double, isReturn: Bool) {
+        let p = min(max(CGFloat(progress), 0), 1)
+        let (nearScaleY, nearSkew) = flapTransform(t: p)
+        let farP = CGFloat((progress + 0.0714).truncatingRemainder(dividingBy: 1.0))
+        let (farScaleY, farSkew) = flapTransform(t: farP)
 
-            var nearWingPath = Path()
-            nearWingPath.move(to: CGPoint(x: -15.6, y: -3.2))
-            nearWingPath.addCurve(to: CGPoint(x: -8.4, y: -20.4), control1: CGPoint(x: -17.8, y: -10.2), control2: CGPoint(x: -15.2, y: -16.4))
-            nearWingPath.addCurve(to: CGPoint(x: -8.8, y: -2.8), control1: CGPoint(x: -9.3, y: -13.6), control2: CGPoint(x: -9.4, y: -7.8))
-            nearWingPath.closeSubpath()
-            context.fill(nearWingPath.applying(nearWingTransform), with: .color(color))
+        let farWingTransform = wingTransform(shoulder: farShoulder, scaleY: farScaleY, skew: farSkew)
+            .concatenating(baseTransform)
+        context.fill(farWingPath.applying(farWingTransform), with: .color(color.opacity(0.45)))
 
-            var barPath = Path()
-            barPath.move(to: CGPoint(x: -14.6, y: -5.6))
-            barPath.addCurve(to: CGPoint(x: -10.4, y: -17.2), control1: CGPoint(x: -15.4, y: -10.4), control2: CGPoint(x: -13.8, y: -14.4))
-            context.stroke(
-                barPath.applying(nearWingTransform),
-                with: .color(MagpieTheme.card),
-                style: StrokeStyle(lineWidth: 1.3 * 1.2, lineCap: .round)
-            )
+        context.fill(tailPath, with: .color(color))
+        context.fill(bodyPath, with: .color(color))
+        context.fill(bellyPath, with: .color(MagpieTheme.card))
 
-            // 6. 喙尖能量球 (.pkt) - 中心正好在 center (0, 0)
-            let dotRect = CGRect(x: center.x - 4.5, y: center.y - 4.5, width: 9, height: 9)
-            if isReturn {
-                context.fill(Path(ellipseIn: dotRect), with: .color(MagpieTheme.card))
-                context.stroke(Path(ellipseIn: dotRect), with: .color(color), style: StrokeStyle(lineWidth: 2.25))
-            } else {
-                context.fill(Path(ellipseIn: dotRect), with: .color(color))
-            }
+        let nearWingTransform = wingTransform(shoulder: nearShoulder, scaleY: nearScaleY, skew: nearSkew)
+            .concatenating(baseTransform)
+        context.fill(nearWingPath.applying(nearWingTransform), with: .color(color))
+        context.stroke(
+            nearBarPath.applying(nearWingTransform),
+            with: .color(MagpieTheme.card),
+            style: StrokeStyle(lineWidth: 1.3 * 1.2, lineCap: .round)
+        )
+
+        if isReturn {
+            context.fill(dotPath, with: .color(MagpieTheme.card))
+            context.stroke(dotPath, with: .color(color), style: StrokeStyle(lineWidth: 2.25))
+        } else {
+            context.fill(dotPath, with: .color(color))
         }
-        .frame(width: 90, height: 44)
     }
 
-    private func flapTransform(t: CGFloat) -> (scaleY: CGFloat, skew: CGFloat) {
+    private static func flapTransform(t: CGFloat) -> (scaleY: CGFloat, skew: CGFloat) {
         if t <= 0.55 {
             let u = t / 0.55
             let s = u * u * (3.0 - 2.0 * u)
-            let scaleY = 1.0 - 1.62 * s
-            let skew = (-8.0 * .pi / 180.0) * s
-            return (scaleY, skew)
+            return (1.0 - 1.62 * s, (-8.0 * .pi / 180.0) * s)
         } else {
             let u = (t - 0.55) / 0.45
             let s = u * u * (3.0 - 2.0 * u)
-            let scaleY = -0.62 + 1.62 * s
-            let skew = (-8.0 * .pi / 180.0) * (1.0 - s)
-            return (scaleY, skew)
+            return (-0.62 + 1.62 * s, (-8.0 * .pi / 180.0) * (1.0 - s))
         }
     }
 
-    private func wingTransform(shoulder: CGPoint, scaleY: CGFloat, skew: CGFloat) -> CGAffineTransform {
+    private static func wingTransform(shoulder: CGPoint, scaleY: CGFloat, skew: CGFloat) -> CGAffineTransform {
         CGAffineTransform(translationX: -shoulder.x, y: -shoulder.y)
             .concatenating(CGAffineTransform(a: 1.0, b: 0.0, c: tan(skew), d: scaleY, tx: 0.0, ty: 0.0))
             .concatenating(CGAffineTransform(translationX: shoulder.x, y: shoulder.y))

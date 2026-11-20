@@ -9,6 +9,9 @@ struct MagpieLogoView: View {
     var showText: Bool = true
     var isAnimated: Bool = true
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         HStack(spacing: 8) {
             birdGraphic
@@ -24,8 +27,8 @@ struct MagpieLogoView: View {
 
     @ViewBuilder
     private var birdGraphic: some View {
-        if isAnimated {
-            TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 30.0)) { timeline in
+        if isAnimated && !reduceMotion {
+            TimelineView(AnimationTimelineSchedule(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active)) { timeline in
                 let now = timeline.date.timeIntervalSinceReferenceDate
                 let cycle = 0.9
                 let progress = (now.truncatingRemainder(dividingBy: cycle)) / cycle

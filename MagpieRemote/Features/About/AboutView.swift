@@ -306,6 +306,7 @@ private struct AboutHeader: View {
     let build: String
     let isAnimating: Bool
     let rotation: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 13) {
@@ -320,8 +321,8 @@ private struct AboutHeader: View {
             }
             .frame(width: 104, height: 104)
             .shadow(color: Color.black.opacity(0.08), radius: 14, x: 0, y: 6)
-            .rotation3DEffect(.degrees(isAnimating ? 3 : -3), axis: (x: 1, y: 1, z: 0))
-            .scaleEffect(isAnimating ? 1.02 : 0.98)
+            .rotation3DEffect(.degrees(reduceMotion ? 0 : (isAnimating ? 3 : -3)), axis: (x: 1, y: 1, z: 0))
+            .scaleEffect(reduceMotion ? 1 : (isAnimating ? 1.02 : 0.98))
             .rotationEffect(.degrees(rotation))
             .padding(.top, 22)
 

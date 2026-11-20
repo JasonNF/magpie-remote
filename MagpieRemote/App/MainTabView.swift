@@ -193,12 +193,13 @@ final class TabStore {
 
 // MARK: - 主界面 TabView
 /// 与官方 Web UI 结构对齐，全面采用 iOS 26/27 Apple 原生 Liquid Glass 语言：
-/// - iPhone（compact）：底部 Liquid Glass 浮动栏，用户可自定义放置哪些常用 Tab（2-4 个）。
-///   点击「更多」弹出的是「标签气泡」（MoreTagBubbleView）而不是页面，点击具体气泡后才进入页面。
-/// - iPad / 大屏（regular）：`.sidebarAdaptable` 展开为结构化分组侧边栏。
+/// - iPhone（含展开屏）与窄窗口：底部 Liquid Glass 浮动栏可固定 2–4 个常用标签。
+///   「更多」从底栏按钮向上展开，未固定页面点击后以面板打开。
+/// - 常规宽度 iPad：`.sidebarAdaptable` 展开为结构化分组侧边栏。
 struct MainTabView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tabStore = TabStore.shared
     @State private var compactSelection: AppPage = MainTabView.initialPage
     @State private var regularSelection: AppPage = MainTabView.initialPage
@@ -217,46 +218,20 @@ struct MainTabView: View {
         return .agents
     }
 
+    private var usesPhoneNavigation: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone || horizontalSizeClass == .compact
+    }
+
+    private var moreAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.16) : .spring(response: 0.38, dampingFraction: 0.96)
+    }
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            if horizontalSizeClass == .compact {
+        Group {
+            if usesPhoneNavigation {
                 compactTabs
             } else {
                 regularTabs
-            }
-
-            if horizontalSizeClass == .compact, isMoreBubblePresented {
-                // 点击全屏半透明遮罩快速关闭
-                Color.black.opacity(colorScheme == .dark ? 0.38 : 0.16)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                            isMoreBubblePresented = false
-                        }
-                    }
-                    .transition(.opacity)
-                    .zIndex(2)
-
-                // 竖直排列的气泡图标
-                MoreTagBubbleView(
-                    unpinnedTabs: tabStore.unpinnedTabs,
-                    onSelectPage: { page in
-                        isMoreBubblePresented = false
-                        activePresentedPage = page
-                    },
-                    onOpenCustomization: {
-                        isMoreBubblePresented = false
-                        showingCustomizationSheet = true
-                    }
-                )
-                .padding(.trailing, 18)
-                .padding(.bottom, 84)
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.72, anchor: .bottomTrailing).combined(with: .opacity),
-                    removal: .scale(scale: 0.8, anchor: .bottomTrailing).combined(with: .opacity)
-                ))
-                .zIndex(3)
             }
         }
         .sheet(item: $activePresentedPage) { page in
@@ -286,9 +261,7 @@ struct MainTabView: View {
             get: { compactSelection },
             set: { newValue in
                 compactSelection = newValue
-                withAnimation(.snappy(duration: 0.2)) {
-                    isMoreBubblePresented = false
-                }
+                isMoreBubblePresented = false
             }
         )
     }
@@ -304,12 +277,29 @@ struct MainTabView: View {
                     }
                 }
             }
+            .tabViewStyle(.tabBarOnly)
             .toolbar(.hidden, for: .tabBar)
-            .onChange(of: tabStore.pinnedTabs) { _, newPinned in
+            .onChange(of: tabStore.pinnedTabs, initial: true) { _, newPinned in
                 if !newPinned.contains(compactSelection) {
                     compactSelection = newPinned.first ?? .agents
                 }
             }
+            .allowsHitTesting(!isMoreBubblePresented)
+            .accessibilityHidden(isMoreBubblePresented)
+
+            Color.black.opacity(isMoreBubblePresented ? (colorScheme == .dark ? 0.42 : 0.16) : 0)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isMoreBubblePresented = false
+                }
+                .allowsHitTesting(isMoreBubblePresented)
+                .accessibilityElement()
+                .accessibilityLabel(Text("关闭"))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHidden(!isMoreBubblePresented)
+                .accessibilitySortPriority(-1)
+                .animation(.easeOut(duration: 0.16), value: isMoreBubblePresented)
 
             MagpieLiquidTabBar(
                 pinnedTabs: tabStore.pinnedTabs,
@@ -317,12 +307,35 @@ struct MainTabView: View {
                 isMoreOpen: isMoreBubblePresented,
                 onToggleMore: {
                     MagpieHaptics.light()
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        isMoreBubblePresented.toggle()
-                    }
+                    isMoreBubblePresented.toggle()
                 }
             )
             .padding(.bottom, 8)
+        }
+        .overlayPreferenceValue(MoreFanAnchorKey.self) { anchor in
+            GeometryReader { proxy in
+                if let anchor {
+                    let trigger = proxy[anchor]
+                    MoreFanMenu(
+                        pages: tabStore.unpinnedTabs,
+                        origin: CGPoint(x: trigger.midX, y: trigger.midY),
+                        size: proxy.size,
+                        progress: isMoreBubblePresented ? 1 : 0,
+                        onSelect: { page in
+                            isMoreBubblePresented = false
+                            activePresentedPage = page
+                        },
+                        onCustomize: {
+                            isMoreBubblePresented = false
+                            showingCustomizationSheet = true
+                        },
+                        onDismiss: { isMoreBubblePresented = false }
+                    )
+                    .allowsHitTesting(isMoreBubblePresented)
+                    .accessibilityHidden(!isMoreBubblePresented)
+                    .animation(moreAnimation, value: isMoreBubblePresented)
+                }
+            }
         }
     }
 
@@ -417,12 +430,15 @@ struct MainTabView: View {
 
 // MARK: - 浮动 Liquid Glass 底部 TabBar（iOS 26/27 现代风格）
 struct MagpieLiquidTabBar: View {
+    static let maximumWidth: CGFloat = 460
+
     let pinnedTabs: [AppPage]
     @Binding var selectedTab: AppPage
-    var isMoreOpen: Bool = false
-    var onToggleMore: (() -> Void)? = nil
+    let isMoreOpen: Bool
+    let onToggleMore: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 4) {
@@ -446,7 +462,7 @@ struct MagpieLiquidTabBar: View {
         )
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.08), radius: 16, x: 0, y: 6)
         .padding(.horizontal, 16)
-        .frame(maxWidth: 420)
+        .frame(maxWidth: Self.maximumWidth)
     }
 
     private func tabButton(_ tab: AppPage) -> some View {
@@ -455,24 +471,26 @@ struct MagpieLiquidTabBar: View {
         return Button {
             if selectedTab != tab || isMoreOpen {
                 UISelectionFeedbackGenerator().selectionChanged()
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.78)) {
                     selectedTab = tab
                 }
             }
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: tab.icon)
-                    .font(.system(size: isSelected ? 17 : 16, weight: isSelected ? .bold : .medium))
-                    .foregroundStyle(isSelected ? tab.primaryColor : MagpieTheme.textMuted)
+                    .font(.system(size: 17, weight: isSelected ? .bold : .medium))
+                    .foregroundStyle(isSelected ? tab.primaryColor : MagpieTheme.textSecondary)
+                    .accessibilityHidden(true)
 
                 Text(tab.shortTitle)
-                    .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
-                    .foregroundStyle(isSelected ? tab.primaryColor : MagpieTheme.textMuted)
+                    .font(.caption.weight(isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? tab.primaryColor : MagpieTheme.textSecondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 3)
+            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
+            .contentShape(Rectangle())
             .background {
                 if isSelected {
                     Capsule()
@@ -481,154 +499,52 @@ struct MagpieLiquidTabBar: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TabBarPressStyle())
+        .accessibilityLabel(tab.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var moreButton: some View {
-        let isSelected = selectedTab == .more || isMoreOpen
-        return Button {
-            if let onToggleMore {
-                onToggleMore()
-            } else if selectedTab != .more {
-                UISelectionFeedbackGenerator().selectionChanged()
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                    selectedTab = .more
-                }
-            }
-        } label: {
+        return Button(action: onToggleMore) {
             VStack(spacing: 3) {
-                Image(systemName: isSelected ? "ellipsis.circle.fill" : "ellipsis.circle")
-                    .font(.system(size: isSelected ? 17 : 16, weight: .bold))
-                    .foregroundStyle(isSelected ? MagpieTheme.accent : MagpieTheme.textMuted)
+                Image(systemName: isMoreOpen ? "chevron.down" : "ellipsis.circle")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(isMoreOpen ? MagpieTheme.accent : MagpieTheme.textSecondary)
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .accessibilityHidden(true)
 
                 Text(String(localized: "更多"))
-                    .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
-                    .foregroundStyle(isSelected ? MagpieTheme.accent : MagpieTheme.textMuted)
+                    .font(.caption.weight(isMoreOpen ? .semibold : .medium))
+                    .foregroundStyle(isMoreOpen ? MagpieTheme.accent : MagpieTheme.textSecondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 3)
+            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 48)
+            .contentShape(Rectangle())
             .background {
-                if isSelected {
+                if isMoreOpen {
                     Capsule()
                         .fill(MagpieTheme.accent.opacity(colorScheme == .dark ? 0.22 : 0.16))
-                        .transition(.scale.combined(with: .opacity))
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TabBarPressStyle())
+        .anchorPreference(key: MoreFanAnchorKey.self, value: .bounds) { $0 }
+        .accessibilityValue(isMoreOpen ? String(localized: "已展开") : String(localized: "已收起"))
+        .accessibilityHint(isMoreOpen ? String(localized: "轻点关闭更多菜单") : String(localized: "轻点展开更多页面"))
+        .accessibilityAddTraits(isMoreOpen ? .isSelected : [])
     }
 }
 
-// MARK: - 点击 More 弹出的「竖直气泡图标」视图（MoreTagBubbleView）
-/// 严格遵循竖直气泡图标设计：每个次级功能作为一个独立高质感圆形气泡按钮垂直排布，
-/// 左侧伴随半透明毛玻璃标签胶囊，点击任意位置或外部即可轻触关闭，提供极致灵动体验。
-struct MoreTagBubbleView: View {
-    let unpinnedTabs: [AppPage]
-    let onSelectPage: (AppPage) -> Void
-    let onOpenCustomization: () -> Void
+private struct TabBarPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var isAppeared = false
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 11) {
-            ForEach(unpinnedTabs) { page in
-                bubbleRow(
-                    title: page.shortTitle,
-                    icon: page.icon,
-                    color: page.primaryColor
-                ) {
-                    onSelectPage(page)
-                }
-            }
-
-            bubbleRow(
-                title: String(localized: "自定义底栏"),
-                icon: "slider.horizontal.3",
-                color: MagpieTheme.accent,
-                isCustomization: true
-            ) {
-                onOpenCustomization()
-            }
-        }
-        .scaleEffect(isAppeared ? 1 : 0.75, anchor: .bottomTrailing)
-        .opacity(isAppeared ? 1 : 0)
-        .onAppear {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.74)) {
-                isAppeared = true
-            }
-        }
-    }
-
-    private func bubbleRow(
-        title: String,
-        icon: String,
-        color: Color,
-        isCustomization: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            MagpieHaptics.light()
-            action()
-        } label: {
-            HStack(spacing: 9) {
-                // 左侧胶囊标签
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(MagpieTheme.textPrimary)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 5.5)
-                    .background(
-                        Capsule()
-                            .fill(MagpieTheme.card.opacity(colorScheme == .dark ? 0.88 : 0.94))
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(MagpieTheme.borderSubtle, lineWidth: 0.8)
-                    )
-                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.08), radius: 6, x: 0, y: 2)
-
-                // 右侧圆形气泡图标
-                ZStack {
-                    Circle()
-                        .fill(isCustomization ? MagpieTheme.card.opacity(0.92) : color.opacity(0.18))
-                        .frame(width: 48, height: 48)
-
-                    Circle()
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    .white.opacity(colorScheme == .dark ? 0.45 : 0.85),
-                                    color.opacity(0.35),
-                                    .white.opacity(0.10)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1.0
-                        )
-                        .frame(width: 48, height: 48)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(color)
-                }
-                .magpieLiquidSurface(cornerRadius: 24, interactive: true)
-                .shadow(color: color.opacity(isCustomization ? 0.15 : 0.35), radius: 8, x: 0, y: 3.5)
-            }
-        }
-        .buttonStyle(MagpieBubblePressableStyle())
-    }
-}
-
-// MARK: - 气泡弹性微按压效果
-struct MagpieBubblePressableStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.75), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.18, dampingFraction: 0.82), value: configuration.isPressed)
     }
 }
 

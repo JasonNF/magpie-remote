@@ -146,6 +146,7 @@ enum MagpieHaptics {
 // MARK: - 呼吸光点指示器 (固定 12×12 布局边界，仅通过 GPU 变换缩放，彻底消除相邻视图抖动与动画漂移)
 struct MagpiePulseDot: View {
     let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPulsing = false
 
     var body: some View {
@@ -156,14 +157,32 @@ struct MagpiePulseDot: View {
                 .frame(width: 7, height: 7)
 
             // 呼吸扩散光环：固定 frame，只通过 scaleEffect（GPU 渲染层变换，完全不触发布局重排）
-            Circle()
-                .stroke(color.opacity(0.55), lineWidth: 1.2)
-                .frame(width: 7, height: 7)
-                .scaleEffect(isPulsing ? 2.1 : 1.0)
-                .opacity(isPulsing ? 0 : 0.85)
+            if !reduceMotion {
+                Circle()
+                    .stroke(color.opacity(0.55), lineWidth: 1.2)
+                    .frame(width: 7, height: 7)
+                    .scaleEffect(isPulsing ? 2.1 : 1.0)
+                    .opacity(isPulsing ? 0 : 0.85)
+            }
         }
         .frame(width: 14, height: 14)
         .onAppear {
+            updatePulse()
+        }
+        .onChange(of: reduceMotion) { _, _ in
+            updatePulse()
+        }
+    }
+
+    private func updatePulse() {
+        if reduceMotion {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                isPulsing = false
+            }
+        } else {
+            isPulsing = false
             withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
                 isPulsing = true
             }

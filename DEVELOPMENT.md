@@ -75,7 +75,8 @@ MagpieRemote/
 ├── App/                      # 应用程序入口与主导航
 │   ├── MagpieRemoteApp.swift # @main 生命周期
 │   ├── RootView.swift        # 路由分发器（未配置 -> 连接列表；已连接 -> 工作台）
-│   └── MainTabView.swift     # iPhone 浮动底栏与 iPad 多列侧边栏导航容器
+│   ├── MainTabView.swift     # iPhone 浮动底栏与 iPad 多列侧边栏导航容器
+│   └── MoreFanMenu.swift     # 以「更多」按钮为锚点的扇形菜单
 ├── Core/                     # 核心公用能力与基础设施
 │   ├── Design/               # 官方设计系统与组件库
 │   │   ├── MagpieTheme.swift       # Apple 原生语义色彩标准系统
@@ -223,6 +224,7 @@ public struct AnalyticsView: View {
    - 使用 `.magpieCard()` 替代繁杂的圆角 + 描边 + 背景手写代码，内置抗锯齿与自适应动态材质。
 4. **浮动操作按钮**：
    - 在底栏、悬浮操作胶囊等需要前置物理折射交互的区域，使用 `.magpieLiquidSurface(cornerRadius: 999, interactive: true)`。
+   - iPhone（含 Duo 内外屏）保留 2–4 个可固定标签及「更多」。未固定入口沿弧线展开，空间不足时可以滚动。开启「减少动态效果」后只淡入淡出。
 
 ---
 

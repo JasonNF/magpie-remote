@@ -511,7 +511,7 @@ struct AgentsView: View {
                     .frame(width: 72, height: 72)
                     .overlay(Circle().stroke(.white.opacity(0.16), lineWidth: 0.8))
                     .shadow(color: MagpieTheme.accent.opacity(0.1), radius: 10, y: 4)
-                Image(systemName: "terminal.slash")
+                Image(systemName: "terminal")
                     .font(.system(size: 28))
                     .foregroundStyle(MagpieTheme.textMuted)
             }
