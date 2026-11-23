@@ -30,7 +30,7 @@ final class SessionsManageViewModel {
         do {
             data = try await client.send(.get(path), as: SessionsManageDTO.self)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -79,7 +79,7 @@ final class SessionsManageViewModel {
             MagpieHaptics.light()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }

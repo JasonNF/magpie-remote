@@ -9,6 +9,8 @@ enum APIError: LocalizedError, Equatable {
     case decoding(String)
     case transport(String)
     case offline
+    /// 请求被调用方取消（页面切走、下拉刷新被打断等），不是网络故障。
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -28,7 +30,23 @@ enum APIError: LocalizedError, Equatable {
             return String(localized: "网络请求失败：\(detail)")
         case .offline:
             return String(localized: "当前无网络连接。")
+        case .cancelled:
+            return String(localized: "请求已取消。")
         }
+    }
+
+    /// 是否为取消：URLSession 的 cancelled、Swift 并发的 CancellationError 都算。
+    static func isCancellation(_ error: Error) -> Bool {
+        if let api = error as? APIError { return api == .cancelled }
+        if error is CancellationError { return true }
+        if let url = error as? URLError { return url.code == .cancelled }
+        return false
+    }
+
+    /// 给界面展示的错误文字。取消不是故障，返回 nil，不弹任何提示。
+    static func message(for error: Error) -> String? {
+        if isCancellation(error) { return nil }
+        return (error as? APIError)?.errorDescription ?? error.localizedDescription
     }
 
     /// 是否为鉴权类错误（用于触发重新登录）。

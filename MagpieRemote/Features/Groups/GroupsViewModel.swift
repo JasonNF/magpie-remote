@@ -29,7 +29,7 @@ final class GroupsViewModel {
             let res = try await client.send(.get("/api/groups"), as: GroupsResponseDTO.self)
             apply(res)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -130,7 +130,7 @@ final class GroupsViewModel {
             }
             return nil
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -173,7 +173,7 @@ final class GroupsViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }

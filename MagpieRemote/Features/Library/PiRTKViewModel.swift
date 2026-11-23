@@ -189,7 +189,7 @@ final class PiRTKViewModel {
         do {
             piView = try await client.send(.get("/api/library/pi"), as: PiViewDTO.self)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -245,7 +245,7 @@ final class PiRTKViewModel {
         do {
             rtk = try await client.send(.get("/api/library/rtk"), as: RTKViewDTO.self)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -263,7 +263,7 @@ final class PiRTKViewModel {
             }
             MagpieHaptics.light()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -281,7 +281,7 @@ final class PiRTKViewModel {
             }
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -299,7 +299,7 @@ final class PiRTKViewModel {
             }
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -311,7 +311,7 @@ final class PiRTKViewModel {
         do {
             bili = try await client.send(.get("/api/library/bili"), as: BiliViewDTO.self)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -331,7 +331,7 @@ final class PiRTKViewModel {
             }
             MagpieHaptics.light()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -350,7 +350,7 @@ final class PiRTKViewModel {
             }
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -375,7 +375,7 @@ final class PiRTKViewModel {
             }
             MagpieHaptics.light()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 }

@@ -10,14 +10,22 @@ final class SessionsViewModel {
 
     func load(client: MagpieAPIClient) async {
         isLoading = true
-        errorMessage = nil
+        defer { isLoading = false }
         do {
             let res = try await client.send(.get("/api/sessions"), as: SessionsResponseDTO.self)
             self.sessions = res.sessions
+            errorMessage = nil
+        } catch where APIError.isCancellation(error) {
+            // 被取消不是失败：保留现有列表和提示
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
-        isLoading = false
+    }
+
+    /// 会话列表有 1.5 MB 左右，远程网络下要好几秒。下拉刷新或页面切走时 SwiftUI 会取消
+    /// 调用方的任务，请求跟着作废，下次还得重下。这里放到独立任务里跑完，只是不再等它。
+    func loadToCompletion(client: MagpieAPIClient) async {
+        await Task { await self.load(client: client) }.value
     }
 
     /// 拉取指定会话的完整对话流与工具调用明细
@@ -46,7 +54,7 @@ final class SessionsViewModel {
             )
             return res.path
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -68,7 +76,7 @@ final class SessionsViewModel {
                 as: SessionCarryResultDTO.self
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }

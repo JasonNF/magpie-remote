@@ -277,6 +277,43 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(QuotaItemDTO.QuotaWindowDTO(name: "5 hours", used: 18).percentText, "18%")
     }
 
+    func testSessionsWithSameIDUnderDifferentAgentsGetUniqueListIDs() throws {
+        let json = """
+        {"sessions": [
+          {"id": "01a1ff1a-c01f-7060-a3ef-40820ab6cb4d", "agent": "omp", "title": "DEVIN"},
+          {"id": "01a1ff1a-c01f-7060-a3ef-40820ab6cb4d", "agent": "claude"},
+          {"id": "mwccyny367b5kygpi3e", "agent": "alma"}
+        ]}
+        """.data(using: .utf8)!
+        let sessions = try JSONDecoder().decode(SessionsResponseDTO.self, from: json).sessions
+        XCTAssertEqual(Set(sessions.map(\.id)).count, 2)
+        XCTAssertEqual(Set(sessions.map(\.listID)).count, 3)
+        XCTAssertEqual(sessions[1].id, "01a1ff1a-c01f-7060-a3ef-40820ab6cb4d")
+    }
+
+    func testSessionTimesFromDifferentAgentsShareOneTimeZone() throws {
+        let utc = SessionDTO(id: "a", agent: "omp", last: "2026-11-22T17:33:42.171Z")
+        let offset = SessionDTO(id: "b", agent: "claude", last: "2026-11-23T01:33:42.072347+08:00")
+        let shortFraction = SessionDTO(id: "c", agent: "omp", last: "2026-11-22T17:33:42.11Z")
+        // 同一时刻，不同写法，显示必须一致
+        XCTAssertNotNil(utc.lastLocalText)
+        XCTAssertEqual(utc.lastLocalText, offset.lastLocalText)
+        XCTAssertEqual(utc.lastLocalText, shortFraction.lastLocalText)
+        XCTAssertEqual(utc.lastLocalText?.count, 16)
+        XCTAssertEqual(utc.lastLocalDay?.count, 10)
+        // 解析不了时退回原始字符串前 16 位
+        XCTAssertEqual(SessionDTO(id: "d", agent: "x", last: "weird-time-value-here").lastLocalText, "weird-time-value")
+        XCTAssertNil(SessionDTO(id: "e", agent: "x").lastLocalText)
+    }
+
+    func testCancellationIsNotShownAsAnError() {
+        XCTAssertNil(APIError.message(for: APIError.cancelled))
+        XCTAssertNil(APIError.message(for: URLError(.cancelled)))
+        XCTAssertNil(APIError.message(for: CancellationError()))
+        XCTAssertNotNil(APIError.message(for: APIError.offline))
+        XCTAssertNotNil(APIError.message(for: URLError(.timedOut)))
+    }
+
     func testExtractCleanURLAndKey() {
         let input = "https://magpie.example.invalid/?k=fixture-web-key"
         let (clean, key) = ConnectionEditViewModel.extractCleanURLAndKey(from: input)

@@ -33,7 +33,7 @@ final class GatewayViewModel {
             let res = try await client.send(.get("/api/caller-keys"), as: GatewayKeysResponseDTO.self)
             self.keys = res.keys
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -48,7 +48,7 @@ final class GatewayViewModel {
             gateway = envelope.gateway
         } catch {
             if gateway == nil {
-                errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                errorMessage = APIError.message(for: error)
             }
         }
     }
@@ -120,7 +120,7 @@ final class GatewayViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -180,7 +180,7 @@ final class GatewayViewModel {
             MagpieHaptics.success()
             return res.secret
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -199,7 +199,7 @@ final class GatewayViewModel {
             self.keys = res.keys
             return res.secret
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -219,7 +219,7 @@ final class GatewayViewModel {
             MagpieHaptics.success()
             return res.secret
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -236,7 +236,7 @@ final class GatewayViewModel {
             )
             self.keys = res.keys
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -268,7 +268,7 @@ final class GatewayViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -292,7 +292,7 @@ final class GatewayViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -307,7 +307,7 @@ final class GatewayViewModel {
             )
             self.keys = res.keys
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -321,7 +321,7 @@ final class GatewayViewModel {
             self.keys = res.keys
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }

@@ -18,6 +18,27 @@ struct SessionDTO: Codable, Sendable, Identifiable, Hashable {
         return id
     }
 
+    /// 最近活动时间，换算成本地时区显示。不同 Agent 返回的时区不一样
+    /// （omp 是 UTC 的 Z，claude / codex 带 +08:00），直接截字符串会同屏混用两种时区。
+    var lastLocalText: String? {
+        guard let last, !last.isEmpty else { return nil }
+        guard let date = SharedFormatters.parseISOLenient(last) else {
+            return String(last.prefix(16)).replacingOccurrences(of: "T", with: " ")
+        }
+        return SharedFormatters.localDateTime.string(from: date)
+    }
+
+    /// 最近活动日期（本地时区）。
+    var lastLocalDay: String? {
+        guard let text = lastLocalText else { return nil }
+        return String(text.prefix(10))
+    }
+
+    /// 列表里的唯一标识。同一个会话 ID 会在多个 Agent 下各出现一条
+    /// （例如 omp 经网关调用 Claude Code，两边都记了同一 ID），只用 `id` 会撞号，
+    /// SwiftUI 会把撞号的那一行画成空白。调接口仍然用 `id`。
+    var listID: String { "\(agent)/\(id)" }
+
     var displayAgent: String {
         name ?? agent
     }

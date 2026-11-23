@@ -30,7 +30,7 @@ final class AgentsViewModel {
             app.apply(newState)
             return true
         } catch {
-            saveError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            saveError = APIError.message(for: error)
             return false
         }
     }
@@ -72,7 +72,7 @@ final class AgentsViewModel {
             _ = try await client.sendData(try Endpoint.post("/api/agents/open", body: Body(agent: id)))
             return true
         } catch {
-            saveError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            saveError = APIError.message(for: error)
             return false
         }
     }
@@ -90,7 +90,7 @@ final class AgentsViewModel {
             _ = try await client.sendData(Endpoint.post(path))
             return true
         } catch {
-            saveError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            saveError = APIError.message(for: error)
             return false
         }
     }

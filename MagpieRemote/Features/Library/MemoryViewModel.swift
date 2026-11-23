@@ -27,7 +27,7 @@ final class MemoryViewModel {
                 errorMessage = problem
             }
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -108,7 +108,7 @@ final class MemoryViewModel {
             distill = try? JSONDecoder().decode(MemoryDistillDTO.self, from: res)
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -129,7 +129,7 @@ final class MemoryViewModel {
             )
             distill = try? JSONDecoder().decode(MemoryDistillDTO.self, from: res)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -152,7 +152,7 @@ final class MemoryViewModel {
             )
             semantic = try? JSONDecoder().decode(MemorySemanticDTO.self, from: res)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -191,7 +191,7 @@ final class MemoryViewModel {
             MagpieHaptics.light()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }

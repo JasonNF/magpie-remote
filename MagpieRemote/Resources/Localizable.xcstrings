@@ -31743,6 +31743,28 @@
           }
         }
       }
+    },
+    "请求已取消。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Request cancelled."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リクエストはキャンセルされました。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請求已取消。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

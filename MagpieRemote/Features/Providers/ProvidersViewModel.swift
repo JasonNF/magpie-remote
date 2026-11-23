@@ -22,7 +22,7 @@ final class ProvidersViewModel {
             self.presets = res.presets ?? []
             self.plugins = res.plugins ?? []
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -40,7 +40,7 @@ final class ProvidersViewModel {
                 providers[idx].off = !turnOn
             }
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -55,7 +55,7 @@ final class ProvidersViewModel {
             providers.removeAll { $0.id == id }
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -81,7 +81,7 @@ final class ProvidersViewModel {
             testResult = nil
             return response
         } catch {
-            testResult = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            testResult = APIError.message(for: error)
             return nil
         }
     }
@@ -132,7 +132,7 @@ final class ProvidersViewModel {
             await load(client: client)
             return response
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -148,7 +148,7 @@ final class ProvidersViewModel {
                 timeout: 30
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -163,7 +163,7 @@ final class ProvidersViewModel {
                 as: ProviderDetectResponseDTO.self
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -177,7 +177,7 @@ final class ProvidersViewModel {
             await load(client: client)
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -213,7 +213,7 @@ final class ProvidersViewModel {
             )
             return try? JSONDecoder().decode(PluginPromptResponseDTO.self, from: resData)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -250,7 +250,7 @@ final class ProvidersViewModel {
             )
             return try? JSONDecoder().decode(PluginSignInStateDTO.self, from: resData)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -288,7 +288,7 @@ final class ProvidersViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -305,7 +305,7 @@ final class ProvidersViewModel {
                 timeout: 60
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -321,7 +321,7 @@ final class ProvidersViewModel {
             )
             return response.key
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -342,7 +342,7 @@ final class ProvidersViewModel {
             await load(client: client)
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -361,7 +361,7 @@ final class ProvidersViewModel {
             await load(client: client)
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -432,7 +432,7 @@ final class ProvidersViewModel {
             await load(client: client)
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -473,7 +473,7 @@ final class ProvidersViewModel {
             await load(client: client)
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -489,7 +489,7 @@ final class ProvidersViewModel {
             _ = try await client.sendData(Endpoint(path: path, method: .post, body: data))
             await load(client: client)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -527,7 +527,7 @@ final class ProvidersViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -548,7 +548,7 @@ final class ProvidersViewModel {
             await load(client: client)
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }

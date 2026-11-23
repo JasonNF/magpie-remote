@@ -164,6 +164,8 @@ final class MagpieAPIClient: Sendable {
             return try await session.data(for: request)
         } catch let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
             throw APIError.offline
+        } catch let error where APIError.isCancellation(error) {
+            throw APIError.cancelled
         } catch {
             throw APIError.transport(error.localizedDescription)
         }

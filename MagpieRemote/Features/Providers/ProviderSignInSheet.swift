@@ -367,7 +367,7 @@ struct ProviderSignInSheet: View {
                 }
             } catch {
                 phase = .failed
-                errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                errorMessage = APIError.message(for: error)
             }
         }
     }
@@ -452,7 +452,7 @@ struct ProviderSignInSheet: View {
                 await reloadProviders(client: client)
                 phase = .done
             } catch {
-                errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                errorMessage = APIError.message(for: error)
             }
         }
     }
@@ -475,7 +475,7 @@ struct ProviderSignInSheet: View {
                 phase = .done
             } catch {
                 phase = .failed
-                errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                errorMessage = APIError.message(for: error)
             }
         }
     }

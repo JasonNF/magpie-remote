@@ -15,7 +15,7 @@ final class SettingsViewModel {
         do {
             self.settings = try await client.send(.get("/api/settings"), as: SettingsDTO.self)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -37,7 +37,7 @@ final class SettingsViewModel {
             settings = updated
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -57,7 +57,7 @@ final class SettingsViewModel {
             )
             return try? JSONDecoder().decode(JSONValue.self, from: resData)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -87,7 +87,7 @@ final class SettingsViewModel {
                 timeout: 180
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -103,7 +103,7 @@ final class SettingsViewModel {
             let updated = try await client.send(endpoint, as: SettingsDTO.self)
             self.settings = updated
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 }

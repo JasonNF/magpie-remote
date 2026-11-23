@@ -73,9 +73,12 @@ final class AppModel {
             phase = .loaded
             lastActiveID = id
             MagpieHaptics.success()
+        } catch where APIError.isCancellation(error) {
+            // 连接被取消（切换连接、页面关闭）：回到空闲，不报错也不震动
+            if self.client === client { phase = .idle }
         } catch {
             phase = .error
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             MagpieHaptics.error()
         }
     }
@@ -90,7 +93,7 @@ final class AppModel {
             phase = .loaded
             errorMessage = nil
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 

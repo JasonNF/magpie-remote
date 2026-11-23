@@ -25,7 +25,7 @@ final class PluginsViewModel {
         do {
             apply(try await client.send(.get("/api/plugins"), as: PluginsResponseDTO.self, timeout: 90))
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -56,7 +56,7 @@ final class PluginsViewModel {
                 apply(state)
             }
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -86,7 +86,7 @@ final class PluginsViewModel {
             )
             searchHits = result.hits
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -116,7 +116,7 @@ final class PluginsViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -142,7 +142,7 @@ final class PluginsViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -163,7 +163,7 @@ final class PluginsViewModel {
             apply(state)
             MagpieHaptics.light()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -182,7 +182,7 @@ final class PluginsViewModel {
             await loadUpdates(client: client)
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -196,7 +196,7 @@ final class PluginsViewModel {
             await loadUpdates(client: client)
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -210,7 +210,7 @@ final class PluginsViewModel {
             isMirrorOn = enable
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -224,7 +224,7 @@ final class PluginsViewModel {
             registry = state.registry
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -246,7 +246,7 @@ final class PluginsViewModel {
             lastAction = options == nil ? String(localized: "选项已清除") : String(localized: "选项已保存")
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -268,7 +268,7 @@ final class PluginsViewModel {
             lastAction = String(localized: "已切换提供方")
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 

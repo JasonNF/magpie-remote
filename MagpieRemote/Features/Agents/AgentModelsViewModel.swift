@@ -25,7 +25,7 @@ final class AgentModelsViewModel {
             )
             apply(res)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -102,7 +102,7 @@ final class AgentModelsViewModel {
             }
             MagpieHaptics.light()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 

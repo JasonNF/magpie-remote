@@ -742,7 +742,7 @@ final class RoutingViewModel {
             }
         } catch {
             guard selectedDay == day, !Task.isCancelled else { return }
-            self.errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            self.errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }

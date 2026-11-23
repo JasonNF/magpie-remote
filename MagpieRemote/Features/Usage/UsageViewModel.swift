@@ -75,7 +75,7 @@ final class UsageViewModel {
             )
             self.usage = usage
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         do {
             quotas = try await client.send(.get("/api/usage/quotas"), as: [QuotaItemDTO].self, timeout: 60)
@@ -125,7 +125,7 @@ final class UsageViewModel {
             ledgerTotal = response.total ?? ledgerTotal
             ledgerHasMore = rows.count >= pageSize && ledgerOffset < (response.total ?? 0)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -162,7 +162,7 @@ final class UsageViewModel {
             )
             sessions = response.sessions
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -176,7 +176,7 @@ final class UsageViewModel {
                 timeout: 60
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -237,7 +237,7 @@ final class UsageViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -257,7 +257,7 @@ final class UsageViewModel {
                 timeout: 45
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -279,7 +279,7 @@ final class UsageViewModel {
             await load(client: client, resetLedger: true)
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -306,7 +306,7 @@ final class UsageViewModel {
                 timeout: 120
             )
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }
@@ -333,7 +333,7 @@ final class UsageViewModel {
             )
             return String(data: data, encoding: .utf8)
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return nil
         }
     }

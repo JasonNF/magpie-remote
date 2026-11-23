@@ -233,7 +233,7 @@ final class MaskingViewModel {
             records = r.records
             hasMore = r.more
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -250,7 +250,7 @@ final class MaskingViewModel {
             records.append(contentsOf: r.records)
             hasMore = r.more
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -271,7 +271,7 @@ final class MaskingViewModel {
             )
             preview = result
         } catch {
-            previewError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            previewError = APIError.message(for: error)
         }
     }
 
@@ -288,7 +288,7 @@ final class MaskingViewModel {
             )
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }
@@ -314,7 +314,7 @@ final class MaskingViewModel {
             _ = try await client.sendData(try Endpoint.post("/api/masking/allow", body: Body(p: placeholder)))
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }

@@ -302,7 +302,7 @@ struct AgentDetailView: View {
                 actionMessage = String(localized: "操作已完成。")
                 MagpieHaptics.success()
             } catch {
-                actionMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                actionMessage = APIError.message(for: error)
             }
         }
     }

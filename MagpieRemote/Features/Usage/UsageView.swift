@@ -1489,7 +1489,7 @@ struct UsageView: View {
                 }
             } else {
                 LazyVStack(spacing: 8) {
-                    ForEach(viewModel.sessions) { session in
+                    ForEach(viewModel.sessions, id: \.listID) { session in
                         sessionCard(session)
                     }
                 }

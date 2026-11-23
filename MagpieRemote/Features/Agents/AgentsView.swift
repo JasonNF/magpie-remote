@@ -214,7 +214,7 @@ struct AgentsView: View {
             MagpieHaptics.success()
             return true
         } catch {
-            actionError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            actionError = APIError.message(for: error)
             return false
         }
     }
@@ -567,7 +567,7 @@ struct AgentsView: View {
                 app.apply(newState)
                 MagpieHaptics.success()
             } catch {
-                actionError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                actionError = APIError.message(for: error)
             }
         }
     }
@@ -582,7 +582,7 @@ struct AgentsView: View {
                 showSaveProfileSheet = false
                 MagpieHaptics.success()
             } catch {
-                actionError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                actionError = APIError.message(for: error)
             }
         }
     }
@@ -604,7 +604,7 @@ struct AgentsView: View {
                 app.apply(newState)
                 MagpieHaptics.success()
             } catch {
-                actionError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                actionError = APIError.message(for: error)
             }
         }
     }
@@ -617,7 +617,7 @@ struct AgentsView: View {
                 let newState: StateDTO = try await client.send(.post("/api/profile/delete", body: DelBody(Name: name)), as: StateDTO.self)
                 app.apply(newState)
             } catch {
-                actionError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                actionError = APIError.message(for: error)
             }
         }
     }
@@ -631,7 +631,7 @@ struct AgentsView: View {
                 app.apply(newState)
                 MagpieHaptics.success()
             } catch {
-                actionError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                actionError = APIError.message(for: error)
             }
         }
     }

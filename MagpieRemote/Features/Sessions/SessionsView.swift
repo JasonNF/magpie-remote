@@ -70,12 +70,12 @@ struct SessionsView: View {
                     } else {
                         MagpieGlassGroup(spacing: 10) {
                             LazyVStack(spacing: 10) {
-                                ForEach(filteredSessions) { session in
+                                ForEach(filteredSessions, id: \.listID) { session in
                                     NavigationLink(value: session) {
                                         SessionCard(session: session)
                                     }
                                     .buttonStyle(.plain)
-                                    .matchedTransitionSource(id: session.id, in: zoomNamespace)
+                                    .matchedTransitionSource(id: session.listID, in: zoomNamespace)
                                 }
                             }
                         }
@@ -92,7 +92,7 @@ struct SessionsView: View {
             .navigationDestination(for: SessionDTO.self) { session in
                 SessionDetailView(session: session)
                     .environment(viewModel)
-                    .navigationTransition(.zoom(sourceID: session.id, in: zoomNamespace))
+                    .navigationTransition(.zoom(sourceID: session.listID, in: zoomNamespace))
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -125,12 +125,12 @@ struct SessionsView: View {
             }
             .task {
                 if let client = app.client, viewModel.sessions.isEmpty {
-                    await viewModel.load(client: client)
+                    await viewModel.loadToCompletion(client: client)
                 }
             }
             .refreshable {
                 if let client = app.client {
-                    await viewModel.load(client: client)
+                    await viewModel.loadToCompletion(client: client)
                 }
             }
         }
@@ -347,8 +347,8 @@ private struct SessionCard: View {
 
                 Spacer()
 
-                if let last = session.last {
-                    Text(String(last.prefix(16)).replacingOccurrences(of: "T", with: " "))
+                if let last = session.lastLocalText {
+                    Text(last)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(MagpieTheme.textMuted)
                 }
@@ -595,8 +595,8 @@ private struct SessionDetailView: View {
                 Spacer()
                 metricCol(title: String(localized: "预估费用"), value: session.formattedCost, color: MagpieTheme.green)
                 Spacer()
-                if let last = session.last {
-                    metricCol(title: String(localized: "时间"), value: String(last.prefix(10)), color: MagpieTheme.textMuted)
+                if let day = session.lastLocalDay {
+                    metricCol(title: String(localized: "时间"), value: day, color: MagpieTheme.textMuted)
                 }
             }
         }

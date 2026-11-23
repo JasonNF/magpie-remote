@@ -573,7 +573,7 @@ struct PluginSignInSheet: View {
                 )
                 callbackURL = ""
             } catch {
-                errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                errorMessage = APIError.message(for: error)
             }
         }
     }

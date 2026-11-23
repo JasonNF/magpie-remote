@@ -295,7 +295,7 @@ final class LibraryViewModel {
             library = try await client.send(.get("/api/library"), as: LibraryDTO.self)
             revision += 1
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
         isLoading = false
     }
@@ -305,7 +305,7 @@ final class LibraryViewModel {
             library = try await client.send(.get("/api/library"), as: LibraryDTO.self)
             revision += 1
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -323,7 +323,7 @@ final class LibraryViewModel {
             lastAction = String(localized: "已同步到全部 Agent")
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -342,7 +342,7 @@ final class LibraryViewModel {
             lastAction = String(localized: "已检查技能更新")
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -361,7 +361,7 @@ final class LibraryViewModel {
             lastAction = String(localized: "技能已全部更新")
             MagpieHaptics.success()
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
         }
     }
 
@@ -391,7 +391,7 @@ final class LibraryViewModel {
             }
         } catch {
             marketItems = []
-            marketError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            marketError = APIError.message(for: error)
         }
     }
 
@@ -464,7 +464,7 @@ final class LibraryViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            marketError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            marketError = APIError.message(for: error)
             return false
         }
     }
@@ -541,7 +541,7 @@ final class LibraryViewModel {
             MagpieHaptics.success()
             return true
         } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            errorMessage = APIError.message(for: error)
             return false
         }
     }

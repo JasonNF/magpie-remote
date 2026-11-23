@@ -66,6 +66,25 @@ enum SharedFormatters {
         return f
     }()
 
+    /// 本地时区的 `yyyy-MM-dd HH:mm`。
+    nonisolated(unsafe) static let localDateTime: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
+
+    /// 宽松的 ISO 8601 解析：小数秒位数不限（接口里有 .11Z、.171Z、.072347+08:00 几种），
+    /// 解析不了标准形式时去掉小数秒再试。
+    static func parseISOLenient(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let d = parseISO(raw) { return d }
+        guard let r = raw.range(of: #"\.\d+"#, options: .regularExpression) else { return nil }
+        var trimmed = raw
+        trimmed.removeSubrange(r)
+        return isoBasic.date(from: trimmed)
+    }
+
     /// ISO 8601 解析，先试带毫秒的格式，再试不带毫秒的。
     static func parseISO(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
